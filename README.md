@@ -52,6 +52,8 @@ links: # 可选：相关链接
 
 - 页面**只显示到年份**；同一年可以有多条，按 `month` 字段排序（没写 `month` 的排在该年最前），再按标题排序。
 - 时间轴顺序是**从早到晚**：横屏时左 = 过去、右 = 现在；竖屏时上 = 过去、下 = 现在。
+- **宽屏横屏时首页是整屏的**：页面本身不滚动，鼠标滚轮（或触控板）直接驱动时间轴左右移动，底部有一条进度线。
+  窗口特别矮、一列内容放不下时，滚轮会先把这一列纵向看完，再继续往右。
   想反过来，把 `src/utils/getSortedTimeline.ts` 里 `a.data.year - b.data.year` 改成 `b.data.year - a.data.year` 即可。
 - 横屏/竖屏的切换规则写死在 `src/components/Timeline.astro` 的媒体查询里：
   `@media (min-width: 900px) and (orientation: landscape)` → 横排；其余（含横屏手机）→ 竖排。
