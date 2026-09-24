@@ -68,9 +68,9 @@ const scrollable = columns.length > 1;
     --tl-column: min(20rem, 72vw);
     --tl-inset: max(1rem, calc((100% - 46rem) / 2));
     /* 光带强度与颜色：浅色克制、暗色为主场 */
-    --tl-flow: 0.28;
-    --tl-flow-hot: 0.6;
-    --tl-flow-color: var(--color-accent);
+    --tl-flow: 0.45;
+    --tl-flow-hot: 0.85;
+    --tl-flow-color: color-mix(in srgb, var(--color-accent) 85%, #000);
     margin-top: 2.5rem;
   }
 
@@ -84,6 +84,26 @@ const scrollable = columns.length > 1;
   /* 光带只在横屏出现（竖屏的轴线是分段的，另做设计） */
   .timeline-flow {
     display: none;
+  }
+
+  /* 进站序列：年份与卡片按列依次浮现（关闭动效偏好时自动禁用） */
+  @media (prefers-reduced-motion: no-preference) {
+    .timeline-year-label {
+      animation: tl-enter 0.5s ease-out both;
+      animation-delay: calc(var(--tl-col, 1) * 70ms);
+    }
+
+    .timeline-events {
+      animation: tl-enter 0.5s ease-out both;
+      animation-delay: calc(var(--tl-col, 1) * 70ms + 120ms);
+    }
+
+    @keyframes tl-enter {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+    }
   }
 
   .timeline-empty {
@@ -265,6 +285,20 @@ const scrollable = columns.length > 1;
       animation: tl-flow 7s linear infinite;
     }
 
+    /* 悬停某张卡片时，把该年的节点与年份文字一起点亮
+       （卡片本身在 TimelineItem 里，跨组件选择要 :global） */
+    :global(.timeline-year:has(.timeline-event:hover) .timeline-year-dot) {
+      background: var(--color-accent);
+      box-shadow: 0 0 0 5px
+        color-mix(in srgb, var(--color-accent) 22%, transparent);
+    }
+
+    .timeline-year:has(:global(.timeline-event):hover)
+      .timeline-year-label
+      time {
+      color: var(--color-foreground);
+    }
+
     /* 滚动时"升温"：快速点亮，松手后慢慢冷却 */
     .timeline[data-heat="true"] .timeline-flow {
       opacity: var(--tl-flow-hot);
@@ -278,6 +312,30 @@ const scrollable = columns.length > 1;
       to {
         transform: translateX(320%);
       }
+    }
+
+    /* 当前年份（离视口中心最近的那一年）放大点亮 */
+    .timeline-year[data-current="true"] .timeline-year-dot {
+      inset-inline-start: 50%;
+      inline-size: 0.6875rem;
+      block-size: 0.6875rem;
+      box-shadow: 0 0 0 5px
+        color-mix(in srgb, var(--color-accent) 18%, transparent);
+    }
+
+    .timeline-year[data-current="true"] .timeline-year-label time {
+      color: var(--color-foreground);
+    }
+
+    .timeline-year-dot {
+      transition:
+        inline-size 0.25s ease,
+        block-size 0.25s ease,
+        box-shadow 0.25s ease;
+    }
+
+    .timeline-year-label time {
+      transition: color 0.25s ease;
     }
 
     /* 节点在滚动时轻微发光 */
@@ -472,6 +530,29 @@ const scrollable = columns.length > 1;
       timeline.dataset.atStart = viewport.scrollLeft <= 4 ? "true" : "false";
       timeline.dataset.atEnd =
         max <= 1 || viewport.scrollLeft >= max - 4 ? "true" : "false";
+
+      // 当前年份：选出离视口中心最近的那一年（屏幕坐标比较，和滚动/变换无关）
+      const viewportBox = viewport.getBoundingClientRect();
+      const centerX = viewportBox.left + viewportBox.width / 2;
+      let current: Element | null = null;
+      let closest = Number.POSITIVE_INFINITY;
+
+      for (const label of timeline.querySelectorAll(".timeline-year-label")) {
+        const box = label.getBoundingClientRect();
+        const distance = Math.abs(box.left + box.width / 2 - centerX);
+        if (distance < closest) {
+          closest = distance;
+          current = label.parentElement;
+        }
+      }
+
+      for (const year of timeline.querySelectorAll(".timeline-year")) {
+        if (year === current) {
+          year.setAttribute("data-current", "true");
+        } else {
+          year.removeAttribute("data-current");
+        }
+      }
     };
 
     // 居中/靠边切换会改变滚动条与可视高度，用 rAF 合并重算，避免状态过期
@@ -492,7 +573,8 @@ const scrollable = columns.length > 1;
     viewport.addEventListener(
       "scroll",
       () => {
-        update();
+        // 布局相关的更新（含"当前年份"判定）合并到 rAF，避免每个滚动事件都读几何
+        scheduleUpdate();
         if (reduceMotion.matches) return;
 
         timeline.dataset.heat = "true";
