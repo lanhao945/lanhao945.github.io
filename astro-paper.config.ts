@@ -3,7 +3,7 @@ import { defineAstroPaperConfig } from "./src/types/config";
 export default defineAstroPaperConfig({
   site: {
     url: "https://lanhao945.github.io/",
-    title: "兰昊",
+    title: "lanhao",
     description: "兰昊的个人主页：一条时间轴记录关键经历，另有技术分享。",
     author: "兰昊",
     profile: "https://github.com/lanhao945",
