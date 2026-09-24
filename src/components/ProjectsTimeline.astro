@@ -10,15 +10,30 @@ type Props = {
   initialRows?: number;
 };
 
-const { projects, perRow = 3, initialRows = 3 } = Astro.props;
+const { projects, perRow = 3, initialRows = 4 } = Astro.props;
 
-const rows: { dir: "ltr" | "rtl"; items: CollectionEntry<"projects">[] }[] = [];
-for (let i = 0; i < projects.length; i += perRow) {
-  rows.push({
-    // 交替方向：第一行左→右，第二行右→左……
-    dir: rows.length % 2 === 0 ? "ltr" : "rtl",
-    items: projects.slice(i, i + perRow),
-  });
+type Row = {
+  dir: "ltr" | "rtl";
+  items: CollectionEntry<"projects">[];
+  /** 拐角行：只放一个项目，位置在折返的那一端 */
+  corner?: boolean;
+};
+
+const rows: Row[] = [];
+let cursor = 0;
+let flips = 0;
+while (cursor < projects.length) {
+  const dir: "ltr" | "rtl" = flips % 2 === 0 ? "ltr" : "rtl";
+  const batch = projects.slice(cursor, cursor + perRow);
+  rows.push({ dir, items: batch });
+  cursor += batch.length;
+
+  // 满行之后、且还有内容：在折返处放一个单独的项目（拐角）
+  if (batch.length === perRow && cursor < projects.length) {
+    rows.push({ dir, items: [projects[cursor]], corner: true });
+    cursor += 1;
+  }
+  flips += 1;
 }
 
 const contents = await Promise.all(
@@ -37,6 +52,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
         <li
           class="projects-row"
           data-dir={row.dir}
+          data-corner={row.corner ? "true" : "false"}
           data-hidden={rowIndex >= initialRows ? "true" : "false"}
         >
           <span class="projects-rails" aria-hidden="true" />
@@ -218,6 +234,11 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
   .projects-row[data-dir="rtl"]:not(:last-child)::after {
     inset-inline-start: var(--pr-inset);
+  }
+
+  /* 拐角行：单个项目贴在折返端（ltr 在右、rtl 在左） */
+  .projects-row[data-corner="true"] .project-box {
+    grid-column: -2 / -1;
   }
 
   .projects-boxes {
@@ -489,7 +510,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
     const rows = [...section.querySelectorAll<HTMLElement>(".projects-row")];
     let loaded = rows.filter(row => row.dataset.hidden !== "true").length;
-    const BATCH = 2;
+    const BATCH = 4;
 
     const reveal = () => {
       let revealed = 0;
