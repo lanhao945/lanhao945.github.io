@@ -1,0 +1,191 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { render } from "astro:content";
+
+type Props = {
+  entry: CollectionEntry<"timeline">;
+};
+
+const { entry } = Astro.props;
+const { title, type, meta, summary, tags, links } = entry.data;
+
+// 正文可选：写在前言下面的 Markdown 会作为补充说明渲染出来
+const { Content } = await render(entry);
+---
+
+<li class="timeline-event" id={`entry-${entry.id}`}>
+  <span class="timeline-event-rail" aria-hidden="true"></span>
+  <div class="timeline-event-body">
+    <p class="timeline-event-meta">
+      <span class="timeline-event-type">{type}</span>
+      {meta && <span class="timeline-event-note">{meta}</span>}
+    </p>
+    <h4 class="timeline-event-title">{title}</h4>
+    {summary && <p class="timeline-event-summary">{summary}</p>}
+    <div class="timeline-event-body">
+      <Content />
+    </div>
+    {
+      tags.length > 0 && (
+        <ul class="timeline-event-tags">
+          {tags.map(tag => (
+            <li>{tag}</li>
+          ))}
+        </ul>
+      )
+    }
+    {
+      links.length > 0 && (
+        <ul class="timeline-event-links">
+          {links.map(link => (
+            <li>
+              <a href={link.url} target="_blank" rel="noopener noreferrer">
+                {link.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</li>
+
+<style>
+  .timeline-event {
+    display: grid;
+    grid-template-columns: 1.25rem 1fr;
+    column-gap: 0.75rem;
+  }
+
+  .timeline-event-rail {
+    position: relative;
+  }
+
+  /* 圆点 */
+  .timeline-event-rail::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 50%;
+    top: 0.45rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-accent);
+    transform: translateX(-50%);
+  }
+
+  /* 竖线 */
+  .timeline-event-rail::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 50%;
+    top: 1.15rem;
+    bottom: -1.5rem;
+    width: 1px;
+    background: var(--color-border);
+    transform: translateX(-50%);
+  }
+
+  .timeline-event:last-child .timeline-event-rail::after {
+    display: none;
+  }
+
+  .timeline-event-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.2rem;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-event-type {
+    border: 1px solid var(--color-border);
+    border-radius: 2px;
+    padding: 0 0.25rem;
+    letter-spacing: 0.06em;
+  }
+
+  .timeline-event-note {
+    letter-spacing: 0.02em;
+  }
+
+  .timeline-event-title {
+    margin: 0.35rem 0 0;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  .timeline-event-summary {
+    margin: 0.35rem 0 0;
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-event-body {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-event-body :global(p) {
+    margin: 0.35rem 0 0;
+  }
+
+  .timeline-event-body :global(ul),
+  .timeline-event-body :global(ol) {
+    margin: 0.35rem 0 0;
+    padding-inline-start: 1.1rem;
+    list-style: revert;
+  }
+
+  .timeline-event-body :global(a) {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-underline-offset: 4px;
+  }
+
+  .timeline-event-body :global(code) {
+    background: var(--color-muted);
+    border-radius: 2px;
+    padding: 0 0.2rem;
+  }
+
+  .timeline-event-tags,
+  .timeline-event-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8125rem;
+  }
+
+  .timeline-event-tags li {
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-event-links a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-underline-offset: 4px;
+  }
+
+  /* 横屏：卡片挂在横向轴上，不再画竖向连线 */
+  @media (min-width: 900px) and (orientation: landscape) {
+    .timeline-event {
+      display: block;
+    }
+
+    .timeline-event-rail {
+      display: none;
+    }
+  }
+</style>
