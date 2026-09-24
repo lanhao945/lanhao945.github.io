@@ -4,26 +4,11 @@ import { render } from "astro:content";
 
 type Props = {
   projects: CollectionEntry<"projects">[];
-  /** 首屏显示几行（= 几个项目），其余等滚到底部附近再展开 */
-  initialRows?: number;
+  /** 首屏显示几个项目，其余等滚到底部附近再展开 */
+  initialItems?: number;
 };
 
-const { projects, initialRows = 5 } = Astro.props;
-
-type Row = {
-  dir: "ltr" | "rtl";
-  items: CollectionEntry<"projects">[];
-};
-
-/**
- * 一个项目一行：折返连线在行末，项目框贴在相反的一端。
- * 第 1 行：项目在左、竖线在右；第 2 行：竖线在左、项目在右……
- * 这样两条横轴 + 折返竖线首尾相连，是一条不断开的时间轴。
- */
-const rows: Row[] = projects.map((project, index) => ({
-  dir: index % 2 === 0 ? "ltr" : "rtl",
-  items: [project],
-}));
+const { projects, initialItems = 4 } = Astro.props;
 
 const contents = await Promise.all(
   projects.map(async project => ({
@@ -37,71 +22,71 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 <section class="projects" data-projects>
   <ol class="projects-track">
     {
-      rows.map((row, rowIndex) => (
-        <li
-          class="projects-row"
-          data-dir={row.dir}
-          data-hidden={rowIndex >= initialRows ? "true" : "false"}
-        >
-          <span class="projects-rails" aria-hidden="true" />
-          <div class="projects-boxes">
-            {row.items.map(project => {
-              const Content = contentMap.get(project.id);
-              const { name, start, end, role, summary, stack, repos } =
-                project.data;
-              const period = end ? `${start} – ${end}` : `${start} 起`;
-              const primary = repos[0];
+      projects.map((project, index) => {
+        const Content = contentMap.get(project.id);
+        const { name, start, end, role, summary, stack, repos } = project.data;
+        const period = end ? `${start} – ${end}` : `${start} 起`;
+        const primary = repos[0];
+        const side = index % 2 === 0 ? "left" : "right";
 
-              return (
-                <article class="project-box" data-project={project.id}>
-                  <p class="project-period">{period}</p>
-                  <h2 class="project-name">
-                    {primary ? (
-                      <a
-                        href={primary.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {name}
-                      </a>
-                    ) : (
-                      name
-                    )}
-                  </h2>
-                  <p class="project-summary">{summary}</p>
+        return (
+          <li
+            class="pr-item"
+            data-side={side}
+            data-hidden={index >= initialItems ? "true" : "false"}
+            style={`--pr-order: ${index}`}
+          >
+            <span class="pr-node" aria-hidden="true">
+              {String(index + 1).padStart(2, "0")}
+            </span>
 
-                  <div class="project-pop">
-                    <p class="project-pop-role">{role}</p>
-                    <div class="project-pop-body">{Content && <Content />}</div>
-                    {stack.length > 0 && (
-                      <ul class="project-stack">
-                        {stack.map(item => (
-                          <li>{item}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {repos.length > 0 && (
-                      <ul class="project-links">
-                        {repos.map(repo => (
-                          <li>
-                            <a
-                              href={repo.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {repo.label}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </li>
-      ))
+            <article class="pr-card" data-project={project.id}>
+              <p class="pr-period">{period}</p>
+              <h2 class="pr-name">
+                {primary ? (
+                  <a
+                    href={primary.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {name}
+                  </a>
+                ) : (
+                  name
+                )}
+              </h2>
+              <p class="pr-summary">{summary}</p>
+
+              <div class="pr-pop">
+                <p class="pr-pop-role">{role}</p>
+                <div class="pr-pop-body">{Content && <Content />}</div>
+                {stack.length > 0 && (
+                  <ul class="pr-stack">
+                    {stack.map(item => (
+                      <li>{item}</li>
+                    ))}
+                  </ul>
+                )}
+                {repos.length > 0 && (
+                  <ul class="pr-links">
+                    {repos.map(repo => (
+                      <li>
+                        <a
+                          href={repo.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {repo.label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </article>
+          </li>
+        );
+      })
     }
   </ol>
 
@@ -110,21 +95,28 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 </section>
 
 <style>
+  /*
+   * 竖直的左右交替时间轴：
+   *   ① 节点（编号圆点）在轴线上，文字块挂在节点内侧；
+   *   ② 轴线 = 每个项目一段竖线 + 行间一整条横线，首尾相接；
+   *   ③ 横线在行的下方穿过整行，接到下一行另一侧的节点，形成连续的蛇形。
+   */
   .projects {
-    --pr-gap: 2.5rem;
-    /* 轴线宽度交给外层 .app-layout（与页头/页脚同一栏） */
-    --pr-inset: 0rem;
+    --pr-gap: 3.25rem;
+    --pr-line: 2px;
+    --pr-node: 2.25rem;
+    --pr-node-x: calc(var(--pr-node) / 2);
     --pr-flow: 0.35;
-    --pr-flow-hot: 0.8;
+    --pr-flow-hot: 0.9;
     --pr-flow-color: var(--color-accent);
     position: relative;
-    padding-block: 1.5rem 3rem;
+    padding-block: 1.5rem 3.5rem;
   }
 
   :global([data-theme="dark"]) .projects {
-    --pr-flow: 0.5;
+    --pr-flow: 0.55;
     --pr-flow-hot: 1;
-    --pr-flow-color: color-mix(in srgb, var(--color-accent) 60%, #fff);
+    --pr-flow-color: color-mix(in srgb, var(--color-accent) 55%, #fff);
   }
 
   .projects-track {
@@ -136,182 +128,151 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     list-style: none;
   }
 
-  .projects-row {
+  .pr-item {
     position: relative;
-    padding-inline: var(--pr-inset);
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
   }
 
-  .projects-row[data-hidden="true"] {
+  .pr-item[data-hidden="true"] {
     display: none;
   }
 
-  /* 两条水平轴线 + 折返处的竖线，合起来是一条连续的时间轴 */
-  .projects-rails {
-    position: absolute;
-    inset-block: 0;
-    inset-inline: var(--pr-inset);
-    border-block: 1px solid var(--color-border);
-    transition: border-color 0.2s ease;
+  .pr-item[data-side="right"] {
+    flex-direction: row-reverse;
   }
 
-  .projects-rails::before,
-  .projects-rails::after {
+  /* —— 轴线：竖线段（贯穿本项目，并向上/下各延伸半个行距） —— */
+  .pr-item::before {
     content: "";
     position: absolute;
-    inset-inline: 0;
-    block-size: 3px;
-    pointer-events: none;
-    opacity: var(--pr-flow);
-    transition: opacity 0.4s ease;
-    background-size: 28% 100%;
-    background-repeat: no-repeat;
-  }
-
-  .projects-rails::before {
-    inset-block-start: -2px;
-    background-image: linear-gradient(
-      90deg,
-      transparent,
-      var(--pr-flow-color),
-      transparent
-    );
-    animation: pr-flow 9s linear infinite;
-  }
-
-  .projects-rails::after {
-    inset-block-end: -2px;
-    background-image: linear-gradient(
-      270deg,
-      transparent,
-      var(--pr-flow-color),
-      transparent
-    );
-    animation: pr-flow 9s linear infinite reverse;
-  }
-
-  @keyframes pr-flow {
-    from {
-      background-position: -30% 0;
-    }
-    to {
-      background-position: 130% 0;
-    }
-  }
-
-  /* 折返竖线：接到下一行的起点 */
-  .projects-fallback-connector {
-    display: none;
-  }
-
-  .projects-row:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    inset-block-start: 100%;
-    block-size: var(--pr-gap);
-    inline-size: 1px;
+    inset-block: calc(var(--pr-gap) / -2);
+    inline-size: var(--pr-line);
+    border-radius: 9999px;
     background: var(--color-border);
+    inset-inline-start: calc(var(--pr-node-x) - var(--pr-line) / 2);
+    transition: background-color 0.2s ease;
   }
 
-  .projects-row[data-dir="ltr"]:not(:last-child)::after {
-    inset-inline-end: var(--pr-inset);
+  .pr-item[data-side="right"]::before {
+    inset-inline-start: auto;
+    inset-inline-end: calc(var(--pr-node-x) - var(--pr-line) / 2);
   }
 
-  .projects-row[data-dir="rtl"]:not(:last-child)::after {
-    inset-inline-start: var(--pr-inset);
+  .pr-item:first-child::before {
+    inset-block-start: 50%;
   }
 
-  /*
-   * 每行一个项目：卡片放在"折返那一端"，所以每个拐角都有一张卡片；
-   * 另一端留给竖线接入（上一行的折返线接到这一行的横轴上）。
-   * 左→右的行：卡片贴右、竖线在左；右→左的行：卡片贴左、竖线在右。
-   */
-  .projects-boxes {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.25rem;
-    padding-block: 1.5rem;
+  .pr-item:last-child::before {
+    inset-block-end: 50%;
   }
 
-  .projects-row[data-dir="ltr"] .project-box {
-    grid-column: 2 / -1;
+  /* —— 轴线：行间横线（从本行节点连到下一行另一侧节点） —— */
+  .pr-item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    inset-block-start: calc(100% + var(--pr-gap) / 2);
+    inset-inline: calc(var(--pr-node-x) - var(--pr-line) / 2);
+    block-size: var(--pr-line);
+    border-radius: 9999px;
+    background: var(--color-border);
+    transition: background-color 0.2s ease;
   }
 
-  .project-box {
+  /* —— 节点：编号圆点 —— */
+  .pr-node {
     position: relative;
-    padding: 0.75rem 0.9rem;
-    border: 1px solid transparent;
-    border-radius: 3px;
+    z-index: 1;
+    display: grid;
+    flex: none;
+    place-items: center;
+    inline-size: var(--pr-node);
+    block-size: var(--pr-node);
+    border: var(--pr-line) solid var(--color-border);
+    border-radius: 9999px;
+    background: var(--color-background);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    color: var(--color-muted-foreground);
     transition:
       border-color 0.2s ease,
-      background-color 0.2s ease,
-      transform 0.2s ease;
+      color 0.2s ease,
+      box-shadow 0.2s ease;
   }
 
-  .project-box:hover,
-  .project-box:focus-within {
-    z-index: 30;
-    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-    transform: translateY(-2px);
+  /* —— 文字块 —— */
+  .pr-card {
+    position: relative;
+    max-inline-size: 34rem;
   }
 
-  .projects-row:has(.project-box:hover) .projects-rails,
-  .projects-row:has(.project-box:focus-within) .projects-rails {
-    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  .pr-item[data-side="right"] .pr-card {
+    text-align: right;
   }
 
-  .projects-row:has(.project-box:hover) .projects-rails::before,
-  .projects-row:has(.project-box:hover) .projects-rails::after,
-  .projects-row:has(.project-box:focus-within) .projects-rails::before,
-  .projects-row:has(.project-box:focus-within) .projects-rails::after {
-    opacity: var(--pr-flow-hot);
-    transition-duration: 0.15s;
-  }
-
-  .project-period {
+  .pr-period {
     margin: 0;
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     color: var(--color-muted-foreground);
   }
 
-  .project-name {
-    margin: 0.35rem 0 0;
-    font-size: 0.9375rem;
+  .pr-name {
+    margin: 0.3rem 0 0;
+    font-size: 1rem;
     font-weight: 600;
     line-height: 1.5;
   }
 
-  .project-name a {
+  .pr-name a {
     color: inherit;
     text-decoration: none;
   }
 
-  .project-name a:hover {
-    color: var(--color-accent);
-  }
-
-  .project-summary {
+  .pr-summary {
     margin: 0.35rem 0 0;
     font-size: 0.8125rem;
-    line-height: 1.6;
+    line-height: 1.65;
     color: var(--color-muted-foreground);
   }
 
-  /* hover / 键盘聚焦时弹出详情卡片（绝对定位，不推挤布局） */
-  .project-pop {
+  /* 悬停 / 聚焦：节点与轴线点亮 */
+  .pr-item:hover::before,
+  .pr-item:focus-within::before,
+  .pr-item:hover::after,
+  .pr-item:focus-within::after {
+    background: color-mix(in srgb, var(--color-accent) 65%, transparent);
+  }
+
+  .pr-item:hover .pr-node,
+  .pr-item:focus-within .pr-node {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    box-shadow: 0 0 0 4px
+      color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+
+  .pr-item:hover .pr-name a,
+  .pr-item:focus-within .pr-name a {
+    color: var(--color-accent);
+  }
+
+  /* —— 详情弹窗：不推挤布局 —— */
+  .pr-pop {
     position: absolute;
-    inset-block-start: calc(100% + 0.5rem);
+    inset-block-start: calc(100% + 0.6rem);
     inset-inline-start: 0;
     z-index: 40;
-    inline-size: min(26rem, 80vw);
-    max-block-size: 60svh;
+    inline-size: min(28rem, 82vw);
+    max-block-size: 55svh;
     overflow: auto;
     padding: 0.9rem 1rem;
     border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
     border-radius: 4px;
     background: var(--color-background);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+    text-align: start;
     opacity: 0;
     visibility: hidden;
     transform: translateY(-4px);
@@ -321,52 +282,57 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
       visibility 0.18s;
   }
 
-  .project-box:hover .project-pop,
-  .project-box:focus-within .project-pop {
+  .pr-item[data-side="right"] .pr-pop {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+  }
+
+  .pr-item:hover .pr-pop,
+  .pr-item:focus-within .pr-pop {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
   }
 
-  .project-pop-role {
+  .pr-pop-role {
     margin: 0 0 0.5rem;
     font-size: 0.75rem;
     letter-spacing: 0.06em;
     color: var(--color-accent);
   }
 
-  .project-pop-body {
+  .pr-pop-body {
     font-size: 0.8125rem;
     line-height: 1.7;
     color: var(--color-muted-foreground);
   }
 
-  .project-pop-body :global(h2),
-  .project-pop-body :global(h3) {
+  .pr-pop-body :global(h2),
+  .pr-pop-body :global(h3) {
     margin: 0.6rem 0 0.25rem;
     font-size: 0.8125rem;
     font-weight: 600;
     color: var(--color-foreground);
   }
 
-  .project-pop-body :global(p) {
+  .pr-pop-body :global(p) {
     margin: 0.25rem 0 0;
   }
 
-  .project-pop-body :global(ul) {
+  .pr-pop-body :global(ul) {
     margin: 0.25rem 0 0;
     padding-inline-start: 1.05rem;
     list-style: revert;
   }
 
-  .project-pop-body :global(code) {
+  .pr-pop-body :global(code) {
     background: var(--color-muted);
     border-radius: 2px;
     padding: 0 0.2rem;
   }
 
-  .project-stack,
-  .project-links {
+  .pr-stack,
+  .pr-links {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
@@ -376,28 +342,18 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     font-size: 0.75rem;
   }
 
-  .project-stack li {
+  .pr-stack li {
     border: 1px solid var(--color-border);
     border-radius: 2px;
     padding: 0 0.3rem;
     color: var(--color-muted-foreground);
   }
 
-  .project-links a {
+  .pr-links a {
     color: var(--color-accent);
     text-decoration: underline;
     text-decoration-style: dashed;
     text-underline-offset: 3px;
-  }
-
-  /* 首列弹窗贴左、末列贴右，避免超出可视区 */
-  .project-box:first-child .project-pop {
-    inset-inline-start: 0;
-  }
-
-  .project-box:last-child .project-pop {
-    inset-inline-start: auto;
-    inset-inline-end: 0;
   }
 
   .projects-sentinel {
@@ -430,50 +386,31 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .project-box {
+    .pr-item:not([data-hidden="true"]) {
       animation: pr-enter 0.45s ease-out both;
+      animation-delay: calc(min(var(--pr-order, 0), 8) * 60ms);
     }
 
     @keyframes pr-enter {
       from {
         opacity: 0;
-        transform: translateY(6px);
+        transform: translateY(8px);
       }
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .projects-rails::before,
-    .projects-rails::after {
-      animation: none;
-    }
-  }
-
-  /* 竖屏：单列、左右交替缩进，变成一条竖着的蛇形 */
-  @media (max-width: 900px) {
+  @media (max-width: 640px) {
     .projects {
-      --pr-gap: 1.25rem;
+      --pr-gap: 2.5rem;
+      --pr-node: 1.875rem;
     }
 
-    .projects-row[data-dir="rtl"] .projects-boxes {
-      direction: ltr;
+    .pr-item {
+      gap: 1rem;
     }
 
-    .projects-boxes {
-      grid-template-columns: minmax(0, 1fr);
-      padding-block: 0.75rem;
-    }
-
-    .project-box {
-      inline-size: 88%;
-    }
-
-    .projects-row[data-dir="rtl"] .project-box {
-      margin-inline-start: auto;
-    }
-
-    .project-pop {
-      inline-size: min(24rem, 92vw);
+    .pr-card {
+      max-inline-size: none;
     }
   }
 </style>
@@ -481,21 +418,18 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 <script>
   function setupProjects() {
     const section = document.querySelector<HTMLElement>("[data-projects]");
-    const sentinel = document.querySelector<HTMLElement>(
-      "[data-projects-sentinel]"
-    );
     if (!section) return;
 
-    const rows = [...section.querySelectorAll<HTMLElement>(".projects-row")];
-    let loaded = rows.filter(row => row.dataset.hidden !== "true").length;
+    const items = [...section.querySelectorAll<HTMLElement>(".pr-item")];
+    let loaded = items.filter(item => item.dataset.hidden !== "true").length;
     const BATCH = 4;
 
     const reveal = () => {
       let revealed = 0;
-      for (const row of rows) {
+      for (const item of items) {
         if (revealed >= BATCH) break;
-        if (row.dataset.hidden === "true") {
-          row.dataset.hidden = "false";
+        if (item.dataset.hidden === "true") {
+          item.dataset.hidden = "false";
           revealed += 1;
           loaded += 1;
         }
@@ -506,17 +440,19 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
       const doc = document.documentElement;
       return (
         window.scrollY > 20 &&
-        window.scrollY + doc.clientHeight >= doc.scrollHeight - 260
+        window.scrollY + doc.clientHeight >= doc.scrollHeight - 300
       );
     };
 
-    // 首屏保持 initialRows 行；开始往下滚、且接近底部前加载下一批
-    const onScroll = () => {
-      if (loaded < rows.length && nearBottom()) reveal();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (loaded < items.length && nearBottom()) reveal();
+      },
+      { passive: true }
+    );
 
-    // 滚动时轴线"升温"
+    // 滚动时整条轴线"升温"
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     let timer = 0;
     window.addEventListener(
