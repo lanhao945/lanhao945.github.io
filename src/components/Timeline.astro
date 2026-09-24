@@ -58,12 +58,6 @@ const scrollable = columns.length > 1;
       </div>
     )
   }
-
-  <div class="timeline-footer">
-    <div class="timeline-progress" aria-hidden="true">
-      <span data-timeline-progress></span>
-    </div>
-  </div>
 </section>
 
 <style>
@@ -127,33 +121,6 @@ const scrollable = columns.length > 1;
   /* 竖屏：同一年分成两段渲染，接缝处保持与段内一致的间距 */
   .timeline-events + .timeline-events {
     margin-top: 1.75rem;
-  }
-
-  /* 底部提示与进度条：只在横屏且内容真的可以滚动时由脚本打开 */
-  .timeline-footer {
-    display: none;
-    align-items: center;
-    gap: 1rem;
-    margin-top: 0.25rem;
-    padding-inline: var(--tl-inset);
-  }
-
-  .timeline[data-axis="x"][data-scrollable="true"] .timeline-footer {
-    display: flex;
-  }
-
-  .timeline-progress {
-    flex: 1;
-    height: 1px;
-    background: var(--color-border);
-  }
-
-  .timeline-progress > span {
-    display: block;
-    height: 100%;
-    background: var(--color-accent);
-    transform: scaleX(0);
-    transform-origin: left center;
   }
 
   /* ---------- 横屏：从左往右，卡片上下交错 ---------- */
@@ -406,27 +373,16 @@ const scrollable = columns.length > 1;
     const { timeline, viewport } = parts;
 
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
-    const progress = timeline.querySelector<HTMLElement>(
-      "[data-timeline-progress]"
-    );
 
     const update = () => {
       const max = viewport.scrollWidth - viewport.clientWidth;
       const maxY = viewport.scrollHeight - viewport.clientHeight;
-      const scrollable = horizontal.matches && max > 16;
-
       timeline.dataset.axis = horizontal.matches ? "x" : "y";
-      timeline.dataset.scrollable = scrollable ? "true" : "false";
       timeline.dataset.overflowX = max > 1 ? "true" : "false";
       timeline.dataset.overflowY = maxY > 1 ? "true" : "false";
       timeline.dataset.atStart = viewport.scrollLeft <= 4 ? "true" : "false";
       timeline.dataset.atEnd =
         max <= 1 || viewport.scrollLeft >= max - 4 ? "true" : "false";
-
-      if (progress) {
-        const ratio = max > 0 ? viewport.scrollLeft / max : 0;
-        progress.style.transform = `scaleX(${clamp(ratio, 0, 1)})`;
-      }
     };
 
     // 居中/靠边切换会改变滚动条与可视高度，用 rAF 合并重算，避免状态过期
