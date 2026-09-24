@@ -140,6 +140,23 @@ const { Content } = await render(entry);
     line-height: 1.6;
   }
 
+  /* 悬停：标题与徽标"接电" */
+  .timeline-event-title,
+  .timeline-event-type {
+    transition:
+      color 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .timeline-event:hover .timeline-event-title {
+    color: var(--color-accent);
+  }
+
+  .timeline-event:hover .timeline-event-type {
+    border-color: var(--color-accent);
+    color: var(--color-foreground);
+  }
+
   .timeline-event-summary {
     margin: 0.35rem 0 0;
     font-size: 0.875rem;
