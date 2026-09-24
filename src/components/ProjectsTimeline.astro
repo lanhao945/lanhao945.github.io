@@ -10,7 +10,7 @@ type Props = {
   initialRows?: number;
 };
 
-const { projects, perRow = 5, initialRows = 2 } = Astro.props;
+const { projects, perRow = 3, initialRows = 3 } = Astro.props;
 
 const rows: { dir: "ltr" | "rtl"; items: CollectionEntry<"projects">[] }[] = [];
 for (let i = 0; i < projects.length; i += perRow) {
@@ -112,7 +112,8 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 <style>
   .projects {
     --pr-gap: 2.5rem;
-    --pr-inset: max(1.5rem, calc((100% - 96rem) / 2));
+    /* 轴线宽度交给外层 .app-layout（与页头/页脚同一栏） */
+    --pr-inset: 0rem;
     --pr-flow: 0.35;
     --pr-flow-hot: 0.8;
     --pr-flow-color: var(--color-accent);

@@ -28,7 +28,9 @@ const projects = entries.sort((a, b) => {
 
   <main id="main-content" data-layout="projects">
     <h1 class="sr-only">{t.pages.projectsTitle}</h1>
-    <ProjectsTimeline projects={projects} />
+    <div class="app-layout">
+      <ProjectsTimeline projects={projects} />
+    </div>
   </main>
 
   <Footer />
