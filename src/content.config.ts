@@ -37,7 +37,7 @@ const timeline = defineCollection({
     year: z.number().int().min(1900).max(2199),
     month: z.number().int().min(1).max(12).optional(),
     title: z.string(),
-    type: z.enum(["教育", "论文", "专利", "项目", "工作", "记录"]),
+    type: z.enum(["教育", "证书", "论文", "专利", "项目", "工作", "记录"]),
     /** 附加说明，例如专利号、会议名、时间段 */
     meta: z.string().optional(),
     summary: z.string().optional(),

@@ -36,7 +36,7 @@ npm run preview      # 预览 dist/：http://localhost:4321
 ---
 year: 2026
 title: 换了个新东西
-type: 项目 # 教育 | 论文 | 专利 | 项目 | 工作 | 记录
+type: 项目 # 教育 | 证书 | 论文 | 专利 | 项目 | 工作 | 记录
 meta: 2026.06 # 可选：副标题、专利号、会议名、时间段
 summary: 一句话说明。 # 可选：front matter 里的一句话
 tags: [标签A, 标签B] # 可选
