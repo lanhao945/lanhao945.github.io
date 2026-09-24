@@ -96,9 +96,10 @@ const rssHref = getRelativeLocaleUrl(
     -->
     <script is:inline>
       (function () {
-        // 默认主题：暗色（月亮模式）；用户手动切换过则尊重其选择
+        // 默认主题：浅色（太阳模式）；用户手动切换过则尊重其选择
         const stored = localStorage.getItem("theme");
-        const theme = stored === "light" || stored === "dark" ? stored : "dark";
+        const theme =
+          stored === "light" || stored === "dark" ? stored : "light";
         const root = document.firstElementChild;
         root?.setAttribute("data-theme", theme);
         root?.classList.toggle("dark", theme === "dark");

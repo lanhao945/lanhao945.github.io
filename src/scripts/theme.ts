@@ -5,8 +5,8 @@ const DARK = "dark";
 function getPreferredTheme(): string {
   const stored = localStorage.getItem(THEME_KEY);
   if (stored === LIGHT || stored === DARK) return stored;
-  // 站点默认暗色，不跟随系统
-  return DARK;
+  // 站点默认浅色，不跟随系统
+  return LIGHT;
 }
 
 // Reuse the value already set by the inline FOUC-prevention script if available.
@@ -59,5 +59,5 @@ document.addEventListener("astro:before-swap", event => {
   }
 });
 
-// 说明：默认暗色，用户通过右上角按钮切换后会记住选择；
+// 说明：默认浅色，用户通过右上角按钮切换后会记住选择；
 // 早期版本还会跟随系统偏好变化，这里已移除，避免覆盖用户的手动选择与站点默认值。
