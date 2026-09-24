@@ -161,7 +161,7 @@ const scrollable = columns.length > 1;
     /* 首页在宽屏横屏下占满整屏：时间轴吃掉剩余高度，页面自身不滚动 */
     .timeline {
       /* 横屏时不再和上面的文字左对齐，向两侧多占一些 */
-      --tl-inset: max(1.5rem, calc((100% - 96rem) / 2));
+      --tl-inset: max(var(--tl-edge), calc((100% - 96rem) / 2));
       /* 与浏览器两侧的留白：随窗口宽度 2rem ~ 4.5rem 之间自适应 */
       --tl-edge: clamp(2rem, 3.5vw, 4.5rem);
       display: flex;
@@ -178,8 +178,6 @@ const scrollable = columns.length > 1;
       flex: 1 1 auto;
       min-block-size: 0;
       margin-top: 0.5rem;
-      /* 与浏览器左右两侧留白，内容滚到边缘前先渐隐 */
-      margin-inline: var(--tl-edge);
     }
 
     .timeline-viewport {
@@ -208,7 +206,7 @@ const scrollable = columns.length > 1;
       content: "";
       position: absolute;
       inset-block: 0;
-      inline-size: 3rem;
+      inline-size: var(--tl-edge);
       z-index: 1;
       pointer-events: none;
       opacity: 0;
@@ -332,12 +330,6 @@ const scrollable = columns.length > 1;
 
     .timeline-year:last-child .timeline-year-dot::after {
       display: none;
-    }
-
-    /* 进度线跟着一起留白，和取景框对齐 */
-    .timeline-footer {
-      margin-inline: var(--tl-edge);
-      padding-inline: 0;
     }
   }
 </style>
