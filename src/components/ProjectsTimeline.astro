@@ -25,7 +25,6 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
       projects.map((project, index) => {
         const Content = contentMap.get(project.id);
         const { name, start, end, role, summary, stack, repos } = project.data;
-        const period = end ? `${start} – ${end}` : `${start} 起`;
         const primary = repos[0];
         const side = index % 2 === 0 ? "left" : "right";
 
@@ -36,12 +35,12 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
             data-hidden={index >= initialItems ? "true" : "false"}
             style={`--pr-order: ${index}`}
           >
-            <span class="pr-node" aria-hidden="true">
-              {String(index + 1).padStart(2, "0")}
+            <span class="pr-when">
+              <time datetime={start}>{start}</time>
+              <span class="pr-when-end">{end ? `– ${end}` : "至今"}</span>
             </span>
 
             <article class="pr-card" data-project={project.id}>
-              <p class="pr-period">{period}</p>
               <h2 class="pr-name">
                 {primary ? (
                   <a
@@ -104,8 +103,9 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   .projects {
     --pr-gap: 3.25rem;
     --pr-line: 2px;
-    --pr-node: 2.25rem;
-    --pr-node-x: calc(var(--pr-node) / 2);
+    /* 时间周期块（放在原来序号的位置） */
+    --pr-when: 7.5rem;
+    --pr-node-x: calc(var(--pr-when) / 2);
     --pr-flow: 0.35;
     --pr-flow-hot: 0.9;
     --pr-flow-color: var(--color-accent);
@@ -180,25 +180,32 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     transition: background-color 0.2s ease;
   }
 
-  /* —— 节点：编号圆点 —— */
-  .pr-node {
+  /* —— 节点位置：时间周期（轴线从中间穿过，上下露出线头） —— */
+  .pr-when {
     position: relative;
     z-index: 1;
     display: grid;
     flex: none;
-    place-items: center;
-    inline-size: var(--pr-node);
-    block-size: var(--pr-node);
+    justify-items: center;
+    gap: 0.1rem;
+    inline-size: var(--pr-when);
+    padding: 0.35rem 0.4rem;
     border: var(--pr-line) solid var(--color-border);
-    border-radius: 9999px;
+    border-radius: 0.5rem;
     background: var(--color-background);
     font-size: 0.6875rem;
-    letter-spacing: 0.04em;
+    line-height: 1.35;
+    letter-spacing: 0.02em;
     color: var(--color-muted-foreground);
+    text-align: center;
     transition:
       border-color 0.2s ease,
       color 0.2s ease,
       box-shadow 0.2s ease;
+  }
+
+  .pr-when-end {
+    opacity: 0.75;
   }
 
   /* —— 文字块 —— */
@@ -209,13 +216,6 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
   .pr-item[data-side="right"] .pr-card {
     text-align: right;
-  }
-
-  .pr-period {
-    margin: 0;
-    font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    color: var(--color-muted-foreground);
   }
 
   .pr-name {
@@ -245,8 +245,8 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     background: color-mix(in srgb, var(--color-accent) 65%, transparent);
   }
 
-  .pr-item:hover .pr-node,
-  .pr-item:focus-within .pr-node {
+  .pr-item:hover .pr-when,
+  .pr-item:focus-within .pr-when {
     border-color: var(--color-accent);
     color: var(--color-accent);
     box-shadow: 0 0 0 4px
@@ -402,7 +402,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   @media (max-width: 640px) {
     .projects {
       --pr-gap: 2.5rem;
-      --pr-node: 1.875rem;
+      --pr-when: 5.5rem;
     }
 
     .pr-item {
