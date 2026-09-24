@@ -129,7 +129,7 @@ const scrollable = groups.length > 1;
     display: none;
     align-items: center;
     gap: 1rem;
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
     padding-inline: var(--tl-inset);
   }
 
@@ -184,14 +184,51 @@ const scrollable = groups.length > 1;
 
   /* ---------- 横屏：从左往右 ---------- */
   @media (min-width: 900px) and (orientation: landscape) {
+    /* 首页在宽屏横屏下占满整屏：时间轴吃掉剩余高度，页面自身不滚动 */
+    .timeline {
+      display: flex;
+      flex: 1 1 auto;
+      min-block-size: 0;
+      flex-direction: column;
+      margin-top: 0.75rem;
+    }
+
+    .timeline-intro {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      column-gap: 0.75rem;
+    }
+
+    .timeline-intro h2 {
+      font-size: 1.25rem;
+    }
+
+    .timeline-subtitle {
+      margin: 0;
+    }
+
     .timeline-viewport {
+      flex: 1 1 auto;
+      min-block-size: 0;
+      margin-top: 0.5rem;
       overflow-x: auto;
-      overflow-y: hidden;
-      overscroll-behavior-x: contain;
+      /* 窗口特别矮时（内容高于可视区）仍能看到整列内容，滚轮会先纵向走完再横向移动 */
+      overflow-y: auto;
+      overscroll-behavior: contain;
       scroll-snap-type: x proximity;
       scroll-padding-inline: var(--tl-inset);
       scrollbar-width: thin;
       padding-block-end: 0.5rem;
+    }
+
+    /* 横屏下压缩一点，尽量让整列内容在一屏内 */
+    .timeline-events {
+      gap: 1rem;
+    }
+
+    .timeline-footer {
+      flex: none;
     }
 
     .timeline-track {
@@ -208,7 +245,7 @@ const scrollable = groups.length > 1;
     }
 
     .timeline-year-label {
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
     }
 
     .timeline-year-dot {
@@ -246,6 +283,9 @@ const scrollable = groups.length > 1;
 <script>
   const HORIZONTAL_QUERY = "(min-width: 900px) and (orientation: landscape)";
 
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, value));
+
   function setupTimeline() {
     const timeline = document.querySelector<HTMLElement>("[data-timeline]");
     const viewport = timeline?.querySelector<HTMLElement>(
@@ -273,13 +313,57 @@ const scrollable = groups.length > 1;
 
       if (progress) {
         const ratio = max > 0 ? viewport.scrollLeft / max : 0;
-        progress.style.transform = `scaleX(${Math.min(1, Math.max(0, ratio))})`;
+        progress.style.transform = `scaleX(${clamp(ratio, 0, 1)})`;
       }
     };
 
     viewport.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
     horizontal.addEventListener("change", update);
+
+    /*
+     * 宽屏横屏时把纵向滚轮转成时间轴的横向滚动：
+     * - 触控板横向滑动、Ctrl+滚轮（缩放）依旧交回浏览器
+     * - 内容高于可视区时（窗口很矮）先纵向走完，再横向移动
+     */
+    if (viewport.dataset.wheelBound !== "true") {
+      viewport.dataset.wheelBound = "true";
+      const surface =
+        document.querySelector<HTMLElement>('[data-layout="index"]') ??
+        viewport;
+
+      surface.addEventListener(
+        "wheel",
+        event => {
+          if (!horizontal.matches || event.ctrlKey) return;
+          if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+
+          const maxX = viewport.scrollWidth - viewport.clientWidth;
+          if (maxX <= 1) return;
+
+          const step =
+            event.deltaMode === 1
+              ? event.deltaY * 16
+              : event.deltaMode === 2
+                ? event.deltaY * viewport.clientHeight
+                : event.deltaY;
+
+          const maxY = viewport.scrollHeight - viewport.clientHeight;
+          if (maxY > 1 && !event.shiftKey) {
+            const nextY = clamp(viewport.scrollTop + step, 0, maxY);
+            if (nextY !== viewport.scrollTop) {
+              viewport.scrollTop = nextY;
+              event.preventDefault();
+              return;
+            }
+          }
+
+          event.preventDefault();
+          viewport.scrollLeft = clamp(viewport.scrollLeft + step, 0, maxX);
+        },
+        { passive: false }
+      );
+    }
 
     update();
   }

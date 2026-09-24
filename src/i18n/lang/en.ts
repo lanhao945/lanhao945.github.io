@@ -36,7 +36,7 @@ export default {
   timeline: {
     title: "Timeline",
     subtitle: "Key milestones by year.",
-    scrollHint: "Drag horizontally or use arrow keys",
+    scrollHint: "Scroll or drag to browse",
     empty: "No entries yet",
   },
   footer: {
