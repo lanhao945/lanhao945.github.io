@@ -8,7 +8,7 @@ type Props = {
   initialItems?: number;
 };
 
-const { projects, initialItems = 4 } = Astro.props;
+const { projects, initialItems = 6 } = Astro.props;
 
 const contents = await Promise.all(
   projects.map(async project => ({
@@ -445,7 +445,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
     const items = [...section.querySelectorAll<HTMLElement>(".pr-item")];
     let loaded = items.filter(item => item.dataset.hidden !== "true").length;
-    const BATCH = 4;
+    const BATCH = 8;
 
     const reveal = () => {
       let revealed = 0;
