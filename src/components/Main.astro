@@ -1,0 +1,59 @@
+---
+import { getRelativeLocaleUrl } from "astro:i18n";
+import config from "@/config";
+
+type Props = {
+  pageTitle: string | [string, string];
+  pageDesc?: string;
+  /** 不在页面上显示标题与描述（标题仍以 sr-only 保留，供读屏与 SEO 使用） */
+  hideHeader?: boolean;
+  class?: string;
+};
+
+const {
+  pageTitle,
+  pageDesc,
+  hideHeader = false,
+  class: className,
+} = Astro.props;
+
+const locale = Astro.currentLocale ?? config.site.lang;
+const backUrl = config.features.showBackButton
+  ? Astro.url.pathname
+  : getRelativeLocaleUrl(locale, "");
+---
+
+<main
+  data-backUrl={backUrl}
+  id="main-content"
+  class:list={["app-layout pb-4", className]}
+>
+  <h1
+    class:list={[
+      "text-2xl font-semibold sm:text-3xl",
+      { "sr-only": hideHeader },
+    ]}
+  >
+    {pageTitle}
+  </h1>
+  {
+    pageDesc &&
+      (hideHeader ? (
+        <p class="sr-only">{pageDesc}</p>
+      ) : (
+        <p class="mt-2 mb-6 italic">{pageDesc}</p>
+      ))
+  }
+  <slot />
+</main>
+
+<script>
+  document.addEventListener("astro:page-load", () => {
+    const mainContent: HTMLElement | null =
+      document.querySelector("#main-content");
+    const backUrl = mainContent?.dataset?.backurl;
+    if (backUrl) {
+      sessionStorage.setItem("backUrl", backUrl);
+    }
+  });
+</script>

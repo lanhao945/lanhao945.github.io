@@ -1,0 +1,419 @@
+---
+import type { TimelineColumn } from "@/utils/getSortedTimeline";
+import TimelineItem from "./TimelineItem.astro";
+import { useTranslations } from "@/i18n";
+
+type Props = {
+  columns: TimelineColumn[];
+};
+
+const { columns } = Astro.props;
+const t = useTranslations(Astro.currentLocale);
+
+const total = columns.reduce(
+  (count, column) =>
+    count + column.stacks.reduce((n, stack) => n + stack.items.length, 0),
+  0
+);
+const scrollable = columns.length > 1;
+---
+
+<section class="timeline" data-timeline aria-label={t.timeline.title}>
+  {
+    total === 0 ? (
+      <p class="timeline-empty">{t.timeline.empty}</p>
+    ) : (
+      <div class="timeline-frame">
+        <div
+          class="timeline-viewport"
+          data-timeline-viewport
+          role="region"
+          aria-label={t.timeline.title}
+          tabindex={scrollable ? 0 : -1}
+        >
+          <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
+            {columns.map((column, index) => (
+              <li
+                class="timeline-year"
+                id={`year-${column.year}`}
+                style={`--tl-col: ${index + 1}`}
+              >
+                <h2 class="timeline-year-label">
+                  <span class="timeline-year-dot" aria-hidden="true" />
+                  <time datetime={String(column.year)}>{column.year}</time>
+                </h2>
+                {column.stacks.map(stack =>
+                  stack.items.length > 0 ? (
+                    <ol class="timeline-events" data-side={stack.side}>
+                      {stack.items.map(entry => (
+                        <TimelineItem entry={entry} />
+                      ))}
+                    </ol>
+                  ) : null
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    )
+  }
+</section>
+
+<style>
+  .timeline {
+    --tl-gap: 2rem;
+    --tl-column: min(20rem, 72vw);
+    --tl-inset: max(1rem, calc((100% - 46rem) / 2));
+    margin-top: 2.5rem;
+  }
+
+  .timeline-empty {
+    margin: 0;
+    padding-inline: var(--tl-inset);
+    font-size: 0.875rem;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-viewport {
+    margin-top: 1.75rem;
+    padding-inline: var(--tl-inset);
+  }
+
+  .timeline-viewport:focus-visible {
+    outline: 2px dashed var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .timeline-track {
+    display: flex;
+    flex-direction: column;
+    gap: 2.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .timeline-year-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-year-dot {
+    display: none;
+  }
+
+  .timeline-events {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* 竖屏：同一年分成两段渲染，接缝处保持与段内一致的间距 */
+  .timeline-events + .timeline-events {
+    margin-top: 1.75rem;
+  }
+
+  /* ---------- 横屏：从左往右，卡片上下交错 ---------- */
+  @media (min-width: 900px) and (orientation: landscape) {
+    /* 首页在宽屏横屏下占满整屏：时间轴吃掉剩余高度，页面自身不滚动 */
+    .timeline {
+      /* 横屏时不再和上面的文字左对齐，向两侧多占一些 */
+      /* 外侧纯留白（不画任何内容）：随窗口宽度自适应 */
+      --tl-edge: clamp(3.5rem, 6vw, 7rem);
+      /* 内侧渐变带宽度：与留白解耦，保持现在的观感 */
+      --tl-fade: 3rem;
+      /* 内容静止位置：刚好让开渐变带 */
+      --tl-inset: max(var(--tl-fade), calc((100% - 96rem) / 2));
+      display: flex;
+      flex: 1 1 auto;
+      min-block-size: 0;
+      flex-direction: column;
+      margin-top: 0.75rem;
+    }
+
+    /* 取景框：负责高度与两侧渐隐，滚动发生在里面的 viewport */
+    .timeline-frame {
+      position: relative;
+      display: flex;
+      flex: 1 1 auto;
+      min-block-size: 0;
+      margin-top: 0.5rem;
+      /*
+       * 外侧留白：这一条里不画任何内容（硬裁切在 --tl-edge 处），
+       * 渐变带再从这条留白的内侧往内容方向铺开同样宽度。
+       */
+      margin-inline: var(--tl-edge);
+    }
+
+    .timeline-viewport {
+      display: flex;
+      flex: 1 1 auto;
+      min-block-size: 0;
+      /* 纵向靠上：真正的上下居中由轨道自己做（内容再高也不会被裁掉） */
+      align-items: flex-start;
+      justify-content: flex-start;
+      overflow-x: auto;
+      /* 窗口特别矮时（内容高于可视区）仍能看到整列内容，滚轮会先纵向走完再横向移动 */
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scroll-padding-inline: var(--tl-inset);
+      /* 隐藏原生滚动条：滚动反馈交给底部那条自绘进度线 */
+      scrollbar-width: none;
+    }
+
+    .timeline-viewport::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* 两侧渐隐：内容滚出边界时淡出，而不是被硬切 */
+    .timeline-frame::before,
+    .timeline-frame::after {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      inline-size: var(--tl-fade);
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .timeline-frame::before {
+      inset-inline-start: 0;
+      background: linear-gradient(
+        to right,
+        var(--color-background),
+        transparent
+      );
+    }
+
+    .timeline-frame::after {
+      inset-inline-end: 0;
+      background: linear-gradient(
+        to left,
+        var(--color-background),
+        transparent
+      );
+    }
+
+    /* 已经在最左/最右时，对应那一侧不渐隐 */
+    .timeline[data-at-start="false"] .timeline-frame::before,
+    .timeline[data-at-end="false"] .timeline-frame::after {
+      opacity: 1;
+    }
+
+    /* 放得下时整体水平居中，放不下就靠左排开、可滚动 */
+    .timeline[data-overflow-x="false"] .timeline-viewport {
+      justify-content: center;
+    }
+
+    /* 轨道 = 上卡片 | 轴线 | 下卡片 三行网格，轴线天然是直的 */
+    .timeline-track {
+      display: grid;
+      grid-template-columns: repeat(var(--tl-columns), var(--tl-column));
+      grid-template-rows: auto auto auto;
+      align-items: end;
+      column-gap: var(--tl-gap);
+      row-gap: 0.25rem;
+      flex: none;
+      /* 至少和可视区一样高，多余空间自动上下均分；内容更高时自然撑开并可滚动 */
+      block-size: max-content;
+      min-block-size: 100%;
+      align-content: center;
+    }
+
+    /* 年份这一层不生成盒子，让里面的三块直接落到轨道网格上 */
+    .timeline-year {
+      display: contents;
+    }
+
+    .timeline-events[data-side="top"] {
+      grid-column: var(--tl-col);
+      grid-row: 1;
+      align-self: end;
+      gap: 1rem;
+    }
+
+    .timeline-events[data-side="bottom"] {
+      grid-column: var(--tl-col);
+      grid-row: 3;
+      align-self: start;
+      gap: 1rem;
+    }
+
+    .timeline-events + .timeline-events {
+      margin-top: 0;
+    }
+
+    /* 年份标签固定在轴线那一行，文字仍按奇偶在轴线上/下交错 */
+    .timeline-year-label {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: 1.25rem 1.25rem 1.25rem;
+      align-items: center;
+      column-gap: 0.5rem;
+      margin: 0;
+      grid-column: var(--tl-col);
+      grid-row: 2;
+      align-self: center;
+      scroll-snap-align: start;
+    }
+
+    /* 年份文字统一在轴线上方：卡片分居两侧时，标签位置固定才好对照 */
+    .timeline-year-label time {
+      grid-column: 2;
+      grid-row: 1;
+      line-height: 1;
+    }
+
+    .timeline-year-dot {
+      display: block;
+      grid-column: 1;
+      grid-row: 2;
+      position: relative;
+      inline-size: 0.5rem;
+      block-size: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent);
+    }
+
+    /* 横向轴线：从本年的点连到下一年 */
+    .timeline-year-dot::after {
+      content: "";
+      position: absolute;
+      inset-inline-start: 100%;
+      top: 50%;
+      width: calc(var(--tl-column) + var(--tl-gap) - 0.5rem);
+      height: 1px;
+      background: var(--color-border);
+    }
+
+    .timeline-year:last-child .timeline-year-dot {
+      box-shadow: 0 0 0 4px
+        color-mix(in srgb, var(--color-accent) 18%, transparent);
+    }
+
+    .timeline-year:last-child .timeline-year-dot::after {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const HORIZONTAL_QUERY = "(min-width: 900px) and (orientation: landscape)";
+  const horizontal = window.matchMedia(HORIZONTAL_QUERY);
+
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, value));
+
+  const getTimeline = () => {
+    const timeline = document.querySelector<HTMLElement>("[data-timeline]");
+    const viewport = timeline?.querySelector<HTMLElement>(
+      "[data-timeline-viewport]"
+    );
+    return timeline && viewport ? { timeline, viewport } : null;
+  };
+
+  /*
+   * 滚轮 → 时间轴横向滚动。
+   * 监听挂在 document 上、只挂一次：视图切换后时间轴元素会换成新的，
+   * 挂在元素上的监听会随之失效，这里每次事件重新查询当前节点。
+   */
+  function handleWheel(event: WheelEvent) {
+    // Ctrl+滚轮（缩放）、竖屏/窄屏、触控板横向滑动：都交回浏览器
+    if (event.ctrlKey || !horizontal.matches) return;
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+
+    const parts = getTimeline();
+    if (!parts) return;
+    const { viewport } = parts;
+
+    const maxX = viewport.scrollWidth - viewport.clientWidth;
+    if (maxX <= 1) return;
+
+    // 首页整屏接管；其它页面只有指针在时间轴里才接管
+    const onHome = document.body.classList.contains("home");
+    if (!onHome && !event.composedPath().includes(viewport)) return;
+
+    const step =
+      event.deltaMode === 1
+        ? event.deltaY * 16
+        : event.deltaMode === 2
+          ? event.deltaY * viewport.clientHeight
+          : event.deltaY;
+
+    // 窗口特别矮、一列装不下时：先把这一列纵向看完，再继续往右
+    const maxY = viewport.scrollHeight - viewport.clientHeight;
+    if (maxY > 8 && !event.shiftKey) {
+      const nextY = clamp(viewport.scrollTop + step, 0, maxY);
+      if (nextY !== viewport.scrollTop) {
+        viewport.scrollTop = nextY;
+        event.preventDefault();
+        return;
+      }
+    }
+
+    event.preventDefault();
+    viewport.scrollLeft = clamp(viewport.scrollLeft + step, 0, maxX);
+  }
+
+  function setupTimeline() {
+    const parts = getTimeline();
+    if (!parts) return;
+    const { timeline, viewport } = parts;
+
+    const track = timeline.querySelector<HTMLElement>(".timeline-track");
+
+    const update = () => {
+      const max = viewport.scrollWidth - viewport.clientWidth;
+      const maxY = viewport.scrollHeight - viewport.clientHeight;
+      timeline.dataset.axis = horizontal.matches ? "x" : "y";
+      timeline.dataset.overflowX = max > 1 ? "true" : "false";
+      timeline.dataset.overflowY = maxY > 1 ? "true" : "false";
+      timeline.dataset.atStart = viewport.scrollLeft <= 4 ? "true" : "false";
+      timeline.dataset.atEnd =
+        max <= 1 || viewport.scrollLeft >= max - 4 ? "true" : "false";
+    };
+
+    // 居中/靠边切换会改变滚动条与可视高度，用 rAF 合并重算，避免状态过期
+    let queued = false;
+    const scheduleUpdate = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        update();
+      });
+    };
+
+    viewport.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    horizontal.addEventListener("change", scheduleUpdate);
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(scheduleUpdate);
+      observer.observe(viewport);
+      if (track) observer.observe(track);
+    }
+
+    // document 只挂一次滚轮监听，避免视图切换后重复绑定
+    if (document.documentElement.dataset.timelineWheel !== "true") {
+      document.documentElement.dataset.timelineWheel = "true";
+      document.addEventListener("wheel", handleWheel, { passive: false });
+    }
+
+    scheduleUpdate();
+  }
+
+  document.addEventListener("astro:page-load", setupTimeline);
+</script>

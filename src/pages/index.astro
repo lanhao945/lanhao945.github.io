@@ -1,0 +1,76 @@
+---
+import { getCollection } from "astro:content";
+import { getRelativeLocaleUrl } from "astro:i18n";
+import Layout from "@/layouts/Layout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import Timeline from "@/components/Timeline.astro";
+import {
+  buildTimelineColumns,
+  getSortedTimeline,
+  groupTimelineByYear,
+} from "@/utils/getSortedTimeline";
+import config from "@/config";
+
+const locale = Astro.currentLocale ?? config.site.lang;
+
+const timelineEntries = await getCollection("timeline");
+const timelineColumns = buildTimelineColumns(
+  groupTimelineByYear(getSortedTimeline(timelineEntries))
+);
+
+const homePath = getRelativeLocaleUrl(locale, "");
+---
+
+<Layout bodyClass="home">
+  <Header />
+  <main id="main-content" data-layout="index" data-home-path={homePath}>
+    <h1 class="sr-only">{config.site.title}</h1>
+    <Timeline columns={timelineColumns} />
+  </main>
+  <Footer />
+</Layout>
+
+<style>
+  /*
+   * 宽屏横屏时首页占满整屏：页面本身不滚动，
+   * 时间轴区域占满剩余高度，用滚轮/触控板左右浏览。
+   */
+  @media (min-width: 900px) and (orientation: landscape) {
+    :global(html:has(body.home)) {
+      overflow-y: hidden;
+    }
+
+    :global(body.home) {
+      block-size: 100svh;
+      overflow: hidden;
+    }
+
+    :global(body.home) #main-content {
+      display: flex;
+      flex: 1;
+      min-block-size: 0;
+      flex-direction: column;
+    }
+
+    /* 头部与页脚也压扁，把高度让给时间轴（属于子组件，需要整段 global） */
+    :global(body.home header > div) {
+      padding-block: 0.5rem;
+    }
+
+    :global(body.home footer > div) {
+      padding-block: 0.5rem;
+    }
+  }
+</style>
+
+<script>
+  document.addEventListener("astro:page-load", () => {
+    const indexLayout = (document.querySelector("#main-content") as HTMLElement)
+      ?.dataset;
+    const baseRoot = import.meta.env.BASE_URL.replace(/\/?$/, "/");
+    if (indexLayout?.layout) {
+      sessionStorage.setItem("backUrl", indexLayout.homePath ?? baseRoot);
+    }
+  });
+</script>
