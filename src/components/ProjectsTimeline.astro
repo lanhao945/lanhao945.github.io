@@ -220,7 +220,11 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     inset-inline-start: var(--pr-inset);
   }
 
-  /* 每行一个项目：占一半宽度，奇数行贴左、偶数行贴右 */
+  /*
+   * 每行一个项目：卡片放在"折返那一端"，所以每个拐角都有一张卡片；
+   * 另一端留给竖线接入（上一行的折返线接到这一行的横轴上）。
+   * 左→右的行：卡片贴右、竖线在左；右→左的行：卡片贴左、竖线在右。
+   */
   .projects-boxes {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -228,7 +232,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     padding-block: 1.5rem;
   }
 
-  .projects-row[data-dir="rtl"] .project-box {
+  .projects-row[data-dir="ltr"] .project-box {
     grid-column: 2 / -1;
   }
 
