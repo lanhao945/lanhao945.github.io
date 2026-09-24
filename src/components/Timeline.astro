@@ -58,10 +58,6 @@ const scrollable = columns.length > 1;
   }
 
   <div class="timeline-footer">
-    <p class="timeline-hint" data-timeline-hint data-hidden="false">
-      <span aria-hidden="true">→</span>
-      {t.timeline.scrollHint}
-    </p>
     <div class="timeline-progress" aria-hidden="true">
       <span data-timeline-progress></span>
     </div>
@@ -144,21 +140,6 @@ const scrollable = columns.length > 1;
     display: flex;
   }
 
-  .timeline-hint {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin: 0;
-    font-size: 0.8125rem;
-    white-space: nowrap;
-    color: var(--color-muted-foreground);
-    transition: opacity 0.3s ease;
-  }
-
-  .timeline-hint[data-hidden="true"] {
-    opacity: 0;
-  }
-
   .timeline-progress {
     flex: 1;
     height: 1px;
@@ -171,22 +152,6 @@ const scrollable = columns.length > 1;
     background: var(--color-accent);
     transform: scaleX(0);
     transform-origin: left center;
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .timeline-hint span {
-      animation: timeline-nudge 2.4s ease-in-out infinite;
-    }
-  }
-
-  @keyframes timeline-nudge {
-    0%,
-    100% {
-      transform: translateX(0);
-    }
-    50% {
-      transform: translateX(0.25rem);
-    }
   }
 
   /* ---------- 横屏：从左往右，卡片上下交错 ---------- */
@@ -379,7 +344,6 @@ const scrollable = columns.length > 1;
     const { timeline, viewport } = parts;
 
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
-    const hint = timeline.querySelector<HTMLElement>("[data-timeline-hint]");
     const progress = timeline.querySelector<HTMLElement>(
       "[data-timeline-progress]"
     );
@@ -393,11 +357,6 @@ const scrollable = columns.length > 1;
       timeline.dataset.scrollable = scrollable ? "true" : "false";
       timeline.dataset.overflowX = max > 1 ? "true" : "false";
       timeline.dataset.overflowY = maxY > 1 ? "true" : "false";
-
-      if (hint) {
-        hint.dataset.hidden =
-          !scrollable || viewport.scrollLeft > 16 ? "true" : "false";
-      }
 
       if (progress) {
         const ratio = max > 0 ? viewport.scrollLeft / max : 0;

@@ -35,7 +35,6 @@ export default {
   },
   timeline: {
     title: "时间轴",
-    scrollHint: "滚动滚轮或左右拖动浏览",
     empty: "暂无记录",
   },
   footer: {

@@ -33,7 +33,6 @@ export interface UIStrings {
   };
   timeline: {
     title: string;
-    scrollHint: string;
     empty: string;
   };
   footer: {
