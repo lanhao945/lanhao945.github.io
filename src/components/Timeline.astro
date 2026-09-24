@@ -1,16 +1,21 @@
 ---
-import type { TimelineGroup } from "@/utils/getSortedTimeline";
+import type { TimelineColumn } from "@/utils/getSortedTimeline";
 import TimelineItem from "./TimelineItem.astro";
 import { useTranslations } from "@/i18n";
 
 type Props = {
-  groups: TimelineGroup[];
+  columns: TimelineColumn[];
 };
 
-const { groups } = Astro.props;
+const { columns } = Astro.props;
 const t = useTranslations(Astro.currentLocale);
-const total = groups.reduce((count, group) => count + group.items.length, 0);
-const scrollable = groups.length > 1;
+
+const total = columns.reduce(
+  (count, column) =>
+    count + column.stacks.reduce((n, stack) => n + stack.items.length, 0),
+  0
+);
+const scrollable = columns.length > 1;
 ---
 
 <section class="timeline" data-timeline aria-label={t.timeline.title}>
@@ -25,18 +30,26 @@ const scrollable = groups.length > 1;
         aria-label={t.timeline.title}
         tabindex={scrollable ? 0 : -1}
       >
-        <ol class="timeline-track">
-          {groups.map(({ year, items }) => (
-            <li class="timeline-year" id={`year-${year}`}>
+        <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
+          {columns.map((column, index) => (
+            <li
+              class="timeline-year"
+              id={`year-${column.year}`}
+              style={`--tl-col: ${index + 1}`}
+            >
               <h2 class="timeline-year-label">
                 <span class="timeline-year-dot" aria-hidden="true" />
-                <time datetime={String(year)}>{year}</time>
+                <time datetime={String(column.year)}>{column.year}</time>
               </h2>
-              <ol class="timeline-events">
-                {items.map(entry => (
-                  <TimelineItem entry={entry} />
-                ))}
-              </ol>
+              {column.stacks.map(stack =>
+                stack.items.length > 0 ? (
+                  <ol class="timeline-events" data-side={stack.side}>
+                    {stack.items.map(entry => (
+                      <TimelineItem entry={entry} />
+                    ))}
+                  </ol>
+                ) : null
+              )}
             </li>
           ))}
         </ol>
@@ -56,7 +69,6 @@ const scrollable = groups.length > 1;
 </section>
 
 <style>
-  /* 与 .app-layout（max-w-3xl + px-4）的内容左边缘对齐 */
   .timeline {
     --tl-gap: 2rem;
     --tl-column: min(20rem, 72vw);
@@ -112,6 +124,11 @@ const scrollable = groups.length > 1;
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  /* 竖屏：同一年分成两段渲染，接缝处保持与段内一致的间距 */
+  .timeline-events + .timeline-events {
+    margin-top: 1.75rem;
   }
 
   /* 底部提示与进度条：只在横屏且内容真的可以滚动时由脚本打开 */
@@ -172,7 +189,7 @@ const scrollable = groups.length > 1;
     }
   }
 
-  /* ---------- 横屏：从左往右 ---------- */
+  /* ---------- 横屏：从左往右，卡片上下交错 ---------- */
   @media (min-width: 900px) and (orientation: landscape) {
     /* 首页在宽屏横屏下占满整屏：时间轴吃掉剩余高度，页面自身不滚动 */
     .timeline {
@@ -197,17 +214,11 @@ const scrollable = groups.length > 1;
       /* 窗口特别矮时（内容高于可视区）仍能看到整列内容，滚轮会先纵向走完再横向移动 */
       overflow-y: auto;
       overscroll-behavior: contain;
-      scroll-snap-type: x proximity;
       scroll-padding-inline: var(--tl-inset);
       scrollbar-width: thin;
       padding-block-end: 0.5rem;
     }
 
-    .timeline-track {
-      flex: none;
-    }
-
-    /* 放得下：上下居中；左右也居中 */
     .timeline[data-overflow-y="false"] .timeline-viewport {
       align-items: center;
     }
@@ -216,60 +227,66 @@ const scrollable = groups.length > 1;
       justify-content: center;
     }
 
-    /* 横屏下压缩一点，尽量让整列内容在一屏内 */
-    .timeline-events {
-      gap: 1rem;
-    }
-
-    .timeline-footer {
+    /* 轨道 = 上卡片 | 轴线 | 下卡片 三行网格，轴线天然是直的 */
+    .timeline-track {
+      display: grid;
+      grid-template-columns: repeat(var(--tl-columns), var(--tl-column));
+      grid-template-rows: auto auto auto;
+      align-items: end;
+      column-gap: var(--tl-gap);
+      row-gap: 0.25rem;
       flex: none;
     }
 
-    .timeline-track {
-      flex-direction: row;
-      align-items: flex-start;
-      gap: var(--tl-gap);
-    }
-
+    /* 年份这一层不生成盒子，让里面的三块直接落到轨道网格上 */
     .timeline-year {
-      position: relative;
-      flex: 0 0 auto;
-      inline-size: var(--tl-column);
-      scroll-snap-align: start;
+      display: contents;
     }
 
-    /* 轴线固定在中间一行，年份文字在上/下交错 */
+    .timeline-events[data-side="top"] {
+      grid-column: var(--tl-col);
+      grid-row: 1;
+      align-self: end;
+      gap: 1rem;
+    }
+
+    .timeline-events[data-side="bottom"] {
+      grid-column: var(--tl-col);
+      grid-row: 3;
+      align-self: start;
+      gap: 1rem;
+    }
+
+    .timeline-events + .timeline-events {
+      margin-top: 0;
+    }
+
+    /* 年份标签固定在轴线那一行，文字仍按奇偶在轴线上/下交错 */
     .timeline-year-label {
       display: grid;
       grid-template-columns: auto 1fr;
       grid-template-rows: 1.25rem 1.25rem 1.25rem;
       align-items: center;
       column-gap: 0.5rem;
-      margin-bottom: 1rem;
-    }
-
-    .timeline-year-dot {
-      grid-column: 1;
+      margin: 0;
+      grid-column: var(--tl-col);
       grid-row: 2;
+      align-self: center;
+      scroll-snap-align: start;
     }
 
+    /* 年份文字统一在轴线上方：卡片分居两侧时，标签位置固定才好对照 */
     .timeline-year-label time {
       grid-column: 2;
-      line-height: 1;
-    }
-
-    .timeline-year:nth-child(odd) .timeline-year-label time {
       grid-row: 1;
-    }
-
-    .timeline-year:nth-child(even) .timeline-year-label time {
-      grid-row: 3;
+      line-height: 1;
     }
 
     .timeline-year-dot {
       display: block;
+      grid-column: 1;
+      grid-row: 2;
       position: relative;
-      flex: none;
       inline-size: 0.5rem;
       block-size: 0.5rem;
       border-radius: 9999px;

@@ -86,7 +86,10 @@ const { Content } = await render(entry);
     transform: translateX(-50%);
   }
 
-  .timeline-event:last-child .timeline-event-rail::after {
+  /* 同一年拆成两段渲染，连线要跨过接缝，只在整年最后一个条目断开 */
+  .timeline-events:last-child
+    > .timeline-event:last-child
+    .timeline-event-rail::after {
     display: none;
   }
 

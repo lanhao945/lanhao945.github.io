@@ -38,3 +38,44 @@ export function groupTimelineByYear(entries: TimelineEntry[]): TimelineGroup[] {
 
   return [...groups.entries()].map(([year, items]) => ({ year, items }));
 }
+
+export type TimelineSide = "top" | "bottom";
+
+export type TimelineStack = {
+  side: TimelineSide;
+  items: TimelineEntry[];
+};
+
+export type TimelineColumn = {
+  year: number;
+  /** 顺序即时间顺序，竖屏按此顺序渲染 */
+  stacks: TimelineStack[];
+};
+
+/**
+ * 把每年的卡片拆成两段，横屏时分别挂在轴线上/轴线下：
+ * - 一年多张卡片：前半段在轴线上方、后半段在下方（从上往下即时间顺序）；
+ * - 一年只有一张卡片：按年份顺序轮流上下。
+ */
+export function buildTimelineColumns(
+  groups: TimelineGroup[]
+): TimelineColumn[] {
+  return groups.map((group, index) => {
+    const firstOnTop = group.items.length > 1 || index % 2 === 0;
+    const splitAt = Math.ceil(group.items.length / 2);
+
+    return {
+      year: group.year,
+      stacks: [
+        {
+          side: firstOnTop ? "top" : "bottom",
+          items: group.items.slice(0, splitAt),
+        },
+        {
+          side: firstOnTop ? "bottom" : "top",
+          items: group.items.slice(splitAt),
+        },
+      ],
+    };
+  });
+}
