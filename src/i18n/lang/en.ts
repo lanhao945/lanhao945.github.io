@@ -35,7 +35,6 @@ export default {
   },
   timeline: {
     title: "Timeline",
-    subtitle: "Key milestones by year.",
     scrollHint: "Scroll or drag to browse",
     empty: "No entries yet",
   },

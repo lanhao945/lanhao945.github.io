@@ -35,7 +35,6 @@ export default {
   },
   timeline: {
     title: "时间轴",
-    subtitle: "按年份记录，同一年可以有多条。",
     scrollHint: "滚动滚轮或左右拖动浏览",
     empty: "暂无记录",
   },

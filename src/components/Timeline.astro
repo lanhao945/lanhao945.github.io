@@ -13,17 +13,10 @@ const total = groups.reduce((count, group) => count + group.items.length, 0);
 const scrollable = groups.length > 1;
 ---
 
-<section class="timeline" data-timeline aria-labelledby="timeline-title">
-  <div class="timeline-intro">
-    <h2 id="timeline-title" class="text-2xl font-semibold tracking-wide">
-      {t.timeline.title}
-    </h2>
-    <p class="timeline-subtitle">{t.timeline.subtitle}</p>
-  </div>
-
+<section class="timeline" data-timeline aria-label={t.timeline.title}>
   {
     total === 0 ? (
-      <p class="timeline-intro timeline-subtitle">{t.timeline.empty}</p>
+      <p class="timeline-empty">{t.timeline.empty}</p>
     ) : (
       <div
         class="timeline-viewport"
@@ -35,10 +28,10 @@ const scrollable = groups.length > 1;
         <ol class="timeline-track">
           {groups.map(({ year, items }) => (
             <li class="timeline-year" id={`year-${year}`}>
-              <h3 class="timeline-year-label">
+              <h2 class="timeline-year-label">
                 <span class="timeline-year-dot" aria-hidden="true" />
                 <time datetime={String(year)}>{year}</time>
-              </h3>
+              </h2>
               <ol class="timeline-events">
                 {items.map(entry => (
                   <TimelineItem entry={entry} />
@@ -71,12 +64,9 @@ const scrollable = groups.length > 1;
     margin-top: 2.5rem;
   }
 
-  .timeline-intro {
+  .timeline-empty {
+    margin: 0;
     padding-inline: var(--tl-inset);
-  }
-
-  .timeline-subtitle {
-    margin: 0.35rem 0 0;
     font-size: 0.875rem;
     color: var(--color-muted-foreground);
   }
@@ -195,21 +185,6 @@ const scrollable = groups.length > 1;
       margin-top: 0.75rem;
     }
 
-    .timeline-intro {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      column-gap: 0.75rem;
-    }
-
-    .timeline-intro h2 {
-      font-size: 1.25rem;
-    }
-
-    .timeline-subtitle {
-      margin: 0;
-    }
-
     .timeline-viewport {
       display: flex;
       flex: 1 1 auto;
@@ -263,8 +238,32 @@ const scrollable = groups.length > 1;
       scroll-snap-align: start;
     }
 
+    /* 轴线固定在中间一行，年份文字在上/下交错 */
     .timeline-year-label {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: 1.25rem 1.25rem 1.25rem;
+      align-items: center;
+      column-gap: 0.5rem;
       margin-bottom: 1rem;
+    }
+
+    .timeline-year-dot {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .timeline-year-label time {
+      grid-column: 2;
+      line-height: 1;
+    }
+
+    .timeline-year:nth-child(odd) .timeline-year-label time {
+      grid-row: 1;
+    }
+
+    .timeline-year:nth-child(even) .timeline-year-label time {
+      grid-row: 3;
     }
 
     .timeline-year-dot {
