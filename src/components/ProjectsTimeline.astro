@@ -266,7 +266,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     inset-block-start: 0;
     z-index: 40;
     inline-size: min(26rem, 52vw);
-    max-block-size: 60svh;
+    max-block-size: calc(100svh - 1.5rem);
     overflow: auto;
     padding: 0.9rem 1rem;
     border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
@@ -289,6 +289,18 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   /* 节点在右 → 弹窗挂到整项右侧 */
   .pr-item[data-side="right"] .pr-pop {
     inset-inline-start: calc(100% + 1rem);
+  }
+
+  /* 视口底部放不下时：翻成向上展开（与项目底部对齐） */
+  .pr-item[data-align="bottom"] .pr-pop {
+    inset-block-start: auto;
+    inset-block-end: 0;
+  }
+
+  /* 两边都放不下（视口很矮）：位置由脚本夹在视口内 */
+  .pr-item[data-align="fit"] .pr-pop {
+    inset-block-start: auto;
+    inset-block-end: auto;
   }
 
   .pr-item:hover .pr-pop,
@@ -462,6 +474,72 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
       },
       { passive: true }
     );
+
+    /*
+     * 详情弹窗的上下限制：以"当前视口"为界，保证整块详情不用滚动就能看全。
+     *   ① 顶部对齐放得下 → 顶部对齐；
+     *   ② 放不下但向上翻能放下 → 与项目底部对齐（向上展开）；
+     *   ③ 两边都放不下（视口很矮）→ 夹在视口内，并限制高度（内部可滚）。
+     */
+    const EDGE = 12;
+    let active: HTMLElement | null = null;
+
+    const alignPopover = () => {
+      if (!active) return;
+      const pop = active.querySelector<HTMLElement>(".pr-pop");
+      if (!pop) return;
+
+      pop.style.insetBlockStart = "";
+      pop.style.maxBlockSize = "";
+
+      const box = active.getBoundingClientRect();
+      const popHeight = pop.getBoundingClientRect().height;
+      const viewportH = window.innerHeight;
+
+      if (box.top + popHeight <= viewportH - EDGE) {
+        active.dataset.align = "top";
+        return;
+      }
+
+      if (box.bottom - popHeight >= EDGE) {
+        active.dataset.align = "bottom";
+        return;
+      }
+
+      // 两边都放不下：夹在视口内，必要时内部滚动
+      active.dataset.align = "fit";
+      const maxHeight = viewportH - EDGE * 2;
+      pop.style.maxBlockSize = `${maxHeight}px`;
+      const height = Math.min(popHeight, maxHeight);
+      const top = Math.min(Math.max(EDGE, box.top), viewportH - EDGE - height);
+      pop.style.insetBlockStart = `${Math.round(top - box.top)}px`;
+    };
+
+    for (const item of items) {
+      item.addEventListener("pointerenter", () => {
+        active = item;
+        alignPopover();
+      });
+      item.addEventListener("focusin", () => {
+        active = item;
+        alignPopover();
+      });
+      item.addEventListener("pointerleave", () => {
+        if (active === item) active = null;
+      });
+    }
+
+    let alignQueued = false;
+    const onLayoutChange = () => {
+      if (alignQueued || !active) return;
+      alignQueued = true;
+      requestAnimationFrame(() => {
+        alignQueued = false;
+        alignPopover();
+      });
+    };
+    window.addEventListener("scroll", onLayoutChange, { passive: true });
+    window.addEventListener("resize", onLayoutChange);
 
     // 滚动时整条轴线"升温"
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
