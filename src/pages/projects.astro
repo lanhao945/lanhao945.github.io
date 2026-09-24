@@ -1,0 +1,35 @@
+---
+import { getCollection } from "astro:content";
+import Layout from "@/layouts/Layout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import ProjectsTimeline from "@/components/ProjectsTimeline.astro";
+import { useTranslations } from "@/i18n";
+import config from "@/config";
+
+const locale = Astro.currentLocale ?? config.site.lang;
+const t = useTranslations(locale);
+
+const entries = await getCollection("projects");
+const projects = entries.sort((a, b) => {
+  const weightA = a.data.weight ?? 0;
+  const weightB = b.data.weight ?? 0;
+  if (weightA !== weightB) return weightA - weightB;
+  // 默认按开始时间倒序：最新在最前
+  return b.data.start.localeCompare(a.data.start);
+});
+---
+
+<Layout
+  title={`${t.pages.projectsTitle} | ${config.site.title}`}
+  description={t.pages.projectsDesc}
+>
+  <Header />
+
+  <main id="main-content" data-layout="projects">
+    <h1 class="sr-only">{t.pages.projectsTitle}</h1>
+    <ProjectsTimeline projects={projects} />
+  </main>
+
+  <Footer />
+</Layout>

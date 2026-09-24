@@ -48,4 +48,34 @@ const timeline = defineCollection({
   }),
 });
 
-export const collections = { posts, timeline };
+/**
+ * 项目经历：中性项目名 + 一句话简介（放蛇形框里），正文是 hover 时展示的详情。
+ * 约定：不写公司/甲方名称，仓库链接由 front-matter 提供。
+ */
+const projects = defineCollection({
+  loader: glob({
+    pattern: "**/[^_]*.{md,mdx}",
+    base: "./src/content/projects",
+  }),
+  schema: z.object({
+    /** 展示名（对方要求：不含公司名） */
+    name: z.string(),
+    /** 起止时间，形如 2025-05 / 2026-07 */
+    start: z.string(),
+    end: z.string().optional(),
+    /** 我在这项目里的角色 */
+    role: z.string(),
+    /** 一句话简介，显示在蛇形框里 */
+    summary: z.string(),
+    /** 技术栈 / 关键词 */
+    stack: z.array(z.string()).default([]),
+    /** 参与过的仓库（私有仓库访客可能打不开） */
+    repos: z
+      .array(z.object({ label: z.string(), url: z.string() }))
+      .default([]),
+    /** 手动排序权重（越小越靠前）；不写则按 start 倒序 */
+    weight: z.number().optional(),
+  }),
+});
+
+export const collections = { posts, timeline, projects };
