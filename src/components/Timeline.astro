@@ -23,36 +23,38 @@ const scrollable = columns.length > 1;
     total === 0 ? (
       <p class="timeline-empty">{t.timeline.empty}</p>
     ) : (
-      <div
-        class="timeline-viewport"
-        data-timeline-viewport
-        role="region"
-        aria-label={t.timeline.title}
-        tabindex={scrollable ? 0 : -1}
-      >
-        <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
-          {columns.map((column, index) => (
-            <li
-              class="timeline-year"
-              id={`year-${column.year}`}
-              style={`--tl-col: ${index + 1}`}
-            >
-              <h2 class="timeline-year-label">
-                <span class="timeline-year-dot" aria-hidden="true" />
-                <time datetime={String(column.year)}>{column.year}</time>
-              </h2>
-              {column.stacks.map(stack =>
-                stack.items.length > 0 ? (
-                  <ol class="timeline-events" data-side={stack.side}>
-                    {stack.items.map(entry => (
-                      <TimelineItem entry={entry} />
-                    ))}
-                  </ol>
-                ) : null
-              )}
-            </li>
-          ))}
-        </ol>
+      <div class="timeline-frame">
+        <div
+          class="timeline-viewport"
+          data-timeline-viewport
+          role="region"
+          aria-label={t.timeline.title}
+          tabindex={scrollable ? 0 : -1}
+        >
+          <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
+            {columns.map((column, index) => (
+              <li
+                class="timeline-year"
+                id={`year-${column.year}`}
+                style={`--tl-col: ${index + 1}`}
+              >
+                <h2 class="timeline-year-label">
+                  <span class="timeline-year-dot" aria-hidden="true" />
+                  <time datetime={String(column.year)}>{column.year}</time>
+                </h2>
+                {column.stacks.map(stack =>
+                  stack.items.length > 0 ? (
+                    <ol class="timeline-events" data-side={stack.side}>
+                      {stack.items.map(entry => (
+                        <TimelineItem entry={entry} />
+                      ))}
+                    </ol>
+                  ) : null
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
     )
   }
@@ -160,6 +162,7 @@ const scrollable = columns.length > 1;
     .timeline {
       /* 横屏时不再和上面的文字左对齐，向两侧多占一些 */
       --tl-inset: max(1.5rem, calc((100% - 96rem) / 2));
+      --tl-edge: 1.5rem;
       display: flex;
       flex: 1 1 auto;
       min-block-size: 0;
@@ -167,11 +170,21 @@ const scrollable = columns.length > 1;
       margin-top: 0.75rem;
     }
 
-    .timeline-viewport {
+    /* 取景框：负责高度与两侧渐隐，滚动发生在里面的 viewport */
+    .timeline-frame {
+      position: relative;
       display: flex;
       flex: 1 1 auto;
       min-block-size: 0;
       margin-top: 0.5rem;
+      /* 与浏览器左右两侧留白，内容滚到边缘前先渐隐 */
+      margin-inline: var(--tl-edge);
+    }
+
+    .timeline-viewport {
+      display: flex;
+      flex: 1 1 auto;
+      min-block-size: 0;
       /* 纵向靠上：真正的上下居中由轨道自己做（内容再高也不会被裁掉） */
       align-items: flex-start;
       justify-content: flex-start;
@@ -181,6 +194,43 @@ const scrollable = columns.length > 1;
       overscroll-behavior: contain;
       scroll-padding-inline: var(--tl-inset);
       scrollbar-width: thin;
+    }
+
+    /* 两侧渐隐：内容滚出边界时淡出，而不是被硬切 */
+    .timeline-frame::before,
+    .timeline-frame::after {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      inline-size: 3rem;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .timeline-frame::before {
+      inset-inline-start: 0;
+      background: linear-gradient(
+        to right,
+        var(--color-background),
+        transparent
+      );
+    }
+
+    .timeline-frame::after {
+      inset-inline-end: 0;
+      background: linear-gradient(
+        to left,
+        var(--color-background),
+        transparent
+      );
+    }
+
+    /* 已经在最左/最右时，对应那一侧不渐隐 */
+    .timeline[data-at-start="false"] .timeline-frame::before,
+    .timeline[data-at-end="false"] .timeline-frame::after {
+      opacity: 1;
     }
 
     /* 放得下时整体水平居中，放不下就靠左排开、可滚动 */
@@ -277,6 +327,12 @@ const scrollable = columns.length > 1;
     .timeline-year:last-child .timeline-year-dot::after {
       display: none;
     }
+
+    /* 进度线跟着一起留白，和取景框对齐 */
+    .timeline-footer {
+      margin-inline: var(--tl-edge);
+      padding-inline: 0;
+    }
   }
 </style>
 
@@ -357,6 +413,9 @@ const scrollable = columns.length > 1;
       timeline.dataset.scrollable = scrollable ? "true" : "false";
       timeline.dataset.overflowX = max > 1 ? "true" : "false";
       timeline.dataset.overflowY = maxY > 1 ? "true" : "false";
+      timeline.dataset.atStart = viewport.scrollLeft <= 4 ? "true" : "false";
+      timeline.dataset.atEnd =
+        max <= 1 || viewport.scrollLeft >= max - 4 ? "true" : "false";
 
       if (progress) {
         const ratio = max > 0 ? viewport.scrollLeft / max : 0;
