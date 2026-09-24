@@ -55,34 +55,34 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
                 )}
               </h2>
               <p class="pr-summary">{summary}</p>
-
-              <div class="pr-pop">
-                <p class="pr-pop-role">{role}</p>
-                <div class="pr-pop-body">{Content && <Content />}</div>
-                {stack.length > 0 && (
-                  <ul class="pr-stack">
-                    {stack.map(item => (
-                      <li>{item}</li>
-                    ))}
-                  </ul>
-                )}
-                {repos.length > 0 && (
-                  <ul class="pr-links">
-                    {repos.map(repo => (
-                      <li>
-                        <a
-                          href={repo.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {repo.label}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
             </article>
+
+            <div class="pr-pop">
+              <p class="pr-pop-role">{role}</p>
+              <div class="pr-pop-body">{Content && <Content />}</div>
+              {stack.length > 0 && (
+                <ul class="pr-stack">
+                  {stack.map(item => (
+                    <li>{item}</li>
+                  ))}
+                </ul>
+              )}
+              {repos.length > 0 && (
+                <ul class="pr-links">
+                  {repos.map(repo => (
+                    <li>
+                      <a
+                        href={repo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {repo.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </li>
         );
       })
@@ -255,14 +255,18 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     color: var(--color-accent);
   }
 
-  /* —— 详情弹窗：不推挤布局 —— */
+  /*
+   * —— 详情弹窗 ——
+   * 从卡片"外侧"展开：节点在左的项目往左展开、节点在右的往右展开，
+   * 这样弹窗落在页面留白里，不会压住中间的项目列表。
+   */
   .pr-pop {
     position: absolute;
-    inset-block-start: calc(100% + 0.6rem);
-    inset-inline-start: 0;
+    /* 与卡片顶部对齐：靠近页首的项目也不会把弹窗顶出视口 */
+    inset-block-start: 0;
     z-index: 40;
-    inline-size: min(28rem, 82vw);
-    max-block-size: 55svh;
+    inline-size: min(26rem, 52vw);
+    max-block-size: 60svh;
     overflow: auto;
     padding: 0.9rem 1rem;
     border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
@@ -272,23 +276,25 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     text-align: start;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-4px);
     transition:
       opacity 0.18s ease,
-      transform 0.18s ease,
       visibility 0.18s;
   }
 
+  /* 节点在左 → 弹窗挂到整项左侧（页面留白区） */
+  .pr-item[data-side="left"] .pr-pop {
+    inset-inline-end: calc(100% + 1rem);
+  }
+
+  /* 节点在右 → 弹窗挂到整项右侧 */
   .pr-item[data-side="right"] .pr-pop {
-    inset-inline-start: auto;
-    inset-inline-end: 0;
+    inset-inline-start: calc(100% + 1rem);
   }
 
   .pr-item:hover .pr-pop,
   .pr-item:focus-within .pr-pop {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0);
   }
 
   .pr-pop-role {
@@ -408,6 +414,14 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
     .pr-card {
       max-inline-size: none;
+    }
+
+    .pr-item .pr-pop {
+      inset-inline: 0;
+      inset-block-start: calc(100% + 0.6rem);
+      translate: 0 0;
+      inline-size: auto;
+      max-block-size: 45svh;
     }
   }
 </style>
