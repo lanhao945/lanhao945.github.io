@@ -1,0 +1,562 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { render } from "astro:content";
+
+type Props = {
+  projects: CollectionEntry<"projects">[];
+  /** 首屏显示几个项目，其余等滚到底部附近再展开 */
+  initialItems?: number;
+};
+
+const { projects, initialItems = 6 } = Astro.props;
+
+const contents = await Promise.all(
+  projects.map(async project => ({
+    slug: project.id,
+    Content: (await render(project)).Content,
+  }))
+);
+const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
+---
+
+<section class="projects" data-projects>
+  <ol class="projects-track">
+    {
+      projects.map((project, index) => {
+        const Content = contentMap.get(project.id);
+        const { name, start, end, role, summary, stack, repos } = project.data;
+        const primary = repos[0];
+        const side = index % 2 === 0 ? "left" : "right";
+
+        return (
+          <li
+            class="pr-item"
+            data-side={side}
+            data-hidden={index >= initialItems ? "true" : "false"}
+            style={`--pr-order: ${index}`}
+          >
+            <span class="pr-when">
+              <time datetime={start}>{start}</time>
+              <span class="pr-when-end">{end ? `– ${end}` : "至今"}</span>
+            </span>
+
+            <article class="pr-card" data-project={project.id}>
+              <h2 class="pr-name">
+                {primary ? (
+                  <a
+                    href={primary.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {name}
+                  </a>
+                ) : (
+                  name
+                )}
+              </h2>
+              <p class="pr-summary">{summary}</p>
+            </article>
+
+            <div class="pr-pop">
+              <p class="pr-pop-role">{role}</p>
+              <div class="pr-pop-body">{Content && <Content />}</div>
+              {stack.length > 0 && (
+                <ul class="pr-stack">
+                  {stack.map(item => (
+                    <li>{item}</li>
+                  ))}
+                </ul>
+              )}
+              {repos.length > 0 && (
+                <ul class="pr-links">
+                  {repos.map(repo => (
+                    <li>
+                      <a
+                        href={repo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {repo.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </li>
+        );
+      })
+    }
+  </ol>
+
+  <div class="projects-sentinel" data-projects-sentinel aria-hidden="true">
+  </div>
+</section>
+
+<style>
+  /*
+   * 竖直的左右交替时间轴：
+   *   ① 节点（编号圆点）在轴线上，文字块挂在节点内侧；
+   *   ② 轴线 = 每个项目一段竖线 + 行间一整条横线，首尾相接；
+   *   ③ 横线在行的下方穿过整行，接到下一行另一侧的节点，形成连续的蛇形。
+   */
+  .projects {
+    --pr-gap: 3.25rem;
+    --pr-line: 2px;
+    /* 时间周期块（放在原来序号的位置）：单行显示，宽度按最长周期定 */
+    --pr-when: 8.5rem;
+    --pr-node-x: calc(var(--pr-when) / 2);
+    --pr-flow: 0.35;
+    --pr-flow-hot: 0.9;
+    --pr-flow-color: var(--color-accent);
+    position: relative;
+    padding-block: 1.5rem 3.5rem;
+  }
+
+  :global([data-theme="dark"]) .projects {
+    --pr-flow: 0.55;
+    --pr-flow-hot: 1;
+    --pr-flow-color: color-mix(in srgb, var(--color-accent) 55%, #fff);
+  }
+
+  .projects-track {
+    display: flex;
+    flex-direction: column;
+    gap: var(--pr-gap);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .pr-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .pr-item[data-hidden="true"] {
+    display: none;
+  }
+
+  .pr-item[data-side="right"] {
+    flex-direction: row-reverse;
+  }
+
+  /* —— 轴线：竖线段（贯穿本项目，并向上/下各延伸半个行距） —— */
+  .pr-item::before {
+    content: "";
+    position: absolute;
+    inset-block: calc(var(--pr-gap) / -2);
+    inline-size: var(--pr-line);
+    border-radius: 9999px;
+    background: var(--color-border);
+    inset-inline-start: calc(var(--pr-node-x) - var(--pr-line) / 2);
+    transition: background-color 0.2s ease;
+  }
+
+  .pr-item[data-side="right"]::before {
+    inset-inline-start: auto;
+    inset-inline-end: calc(var(--pr-node-x) - var(--pr-line) / 2);
+  }
+
+  .pr-item:first-child::before {
+    inset-block-start: 50%;
+  }
+
+  .pr-item:last-child::before {
+    inset-block-end: 50%;
+  }
+
+  /* —— 轴线：行间横线（从本行节点连到下一行另一侧节点） —— */
+  .pr-item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    inset-block-start: calc(100% + var(--pr-gap) / 2);
+    inset-inline: calc(var(--pr-node-x) - var(--pr-line) / 2);
+    block-size: var(--pr-line);
+    border-radius: 9999px;
+    background: var(--color-border);
+    transition: background-color 0.2s ease;
+  }
+
+  /* —— 节点位置：时间周期（轴线从中间穿过，上下露出线头） —— */
+  .pr-when {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--pr-when);
+    padding: 0.35rem 0.4rem;
+    white-space: nowrap;
+    border: var(--pr-line) solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-background);
+    font-size: 0.625rem;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    color: var(--color-muted-foreground);
+    text-align: center;
+    transition:
+      border-color 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  /* —— 文字块 —— */
+  .pr-card {
+    position: relative;
+    max-inline-size: 34rem;
+  }
+
+  .pr-item[data-side="right"] .pr-card {
+    text-align: right;
+  }
+
+  .pr-name {
+    margin: 0.3rem 0 0;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .pr-name a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .pr-summary {
+    margin: 0.35rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--color-muted-foreground);
+  }
+
+  /* 悬停 / 聚焦：节点与轴线点亮 */
+  .pr-item:hover::before,
+  .pr-item:focus-within::before,
+  .pr-item:hover::after,
+  .pr-item:focus-within::after {
+    background: color-mix(in srgb, var(--color-accent) 65%, transparent);
+  }
+
+  .pr-item:hover .pr-when,
+  .pr-item:focus-within .pr-when {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    box-shadow: 0 0 0 4px
+      color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+
+  .pr-item:hover .pr-name a,
+  .pr-item:focus-within .pr-name a {
+    color: var(--color-accent);
+  }
+
+  /*
+   * —— 详情弹窗 ——
+   * 从卡片"外侧"展开：节点在左的项目往左展开、节点在右的往右展开，
+   * 这样弹窗落在页面留白里，不会压住中间的项目列表。
+   */
+  .pr-pop {
+    position: absolute;
+    /* 与卡片顶部对齐：靠近页首的项目也不会把弹窗顶出视口 */
+    inset-block-start: 0;
+    z-index: 40;
+    inline-size: min(26rem, 52vw);
+    max-block-size: calc(100svh - 1.5rem);
+    overflow: auto;
+    padding: 0.9rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+    border-radius: 4px;
+    background: var(--color-background);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+    text-align: start;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.18s ease,
+      visibility 0.18s;
+  }
+
+  /* 节点在左 → 弹窗挂到整项左侧（页面留白区） */
+  .pr-item[data-side="left"] .pr-pop {
+    inset-inline-end: calc(100% + 1rem);
+  }
+
+  /* 节点在右 → 弹窗挂到整项右侧 */
+  .pr-item[data-side="right"] .pr-pop {
+    inset-inline-start: calc(100% + 1rem);
+  }
+
+  /* 视口底部放不下时：翻成向上展开（与项目底部对齐） */
+  .pr-item[data-align="bottom"] .pr-pop {
+    inset-block-start: auto;
+    inset-block-end: 0;
+  }
+
+  /* 两边都放不下（视口很矮）：位置由脚本夹在视口内 */
+  .pr-item[data-align="fit"] .pr-pop {
+    inset-block-start: auto;
+    inset-block-end: auto;
+  }
+
+  .pr-item:hover .pr-pop,
+  .pr-item:focus-within .pr-pop {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .pr-pop-role {
+    margin: 0 0 0.5rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    color: var(--color-accent);
+  }
+
+  .pr-pop-body {
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    color: var(--color-muted-foreground);
+  }
+
+  .pr-pop-body :global(h2),
+  .pr-pop-body :global(h3) {
+    margin: 0.6rem 0 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+
+  .pr-pop-body :global(p) {
+    margin: 0.25rem 0 0;
+  }
+
+  .pr-pop-body :global(ul) {
+    margin: 0.25rem 0 0;
+    padding-inline-start: 1.05rem;
+    list-style: revert;
+  }
+
+  .pr-pop-body :global(code) {
+    background: var(--color-muted);
+    border-radius: 2px;
+    padding: 0 0.2rem;
+  }
+
+  .pr-stack,
+  .pr-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.7rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.75rem;
+  }
+
+  .pr-stack li {
+    border: 1px solid var(--color-border);
+    border-radius: 2px;
+    padding: 0 0.3rem;
+    color: var(--color-muted-foreground);
+  }
+
+  .pr-links a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-underline-offset: 3px;
+  }
+
+  .projects-sentinel {
+    block-size: 1px;
+  }
+
+  /* 顶部 / 底部渐隐，与首页一致 */
+  .projects::before,
+  .projects::after {
+    content: "";
+    position: fixed;
+    inset-inline: 0;
+    block-size: 2.5rem;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  .projects::before {
+    inset-block-start: 0;
+    background: linear-gradient(
+      to bottom,
+      var(--color-background),
+      transparent
+    );
+  }
+
+  .projects::after {
+    inset-block-end: 0;
+    background: linear-gradient(to top, var(--color-background), transparent);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .pr-item:not([data-hidden="true"]) {
+      animation: pr-enter 0.45s ease-out both;
+      animation-delay: calc(min(var(--pr-order, 0), 8) * 60ms);
+    }
+
+    @keyframes pr-enter {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+    }
+  }
+
+  @media (max-width: 640px) {
+    .projects {
+      --pr-gap: 2.5rem;
+      --pr-when: 7.5rem;
+    }
+
+    .pr-item {
+      gap: 1rem;
+    }
+
+    .pr-card {
+      max-inline-size: none;
+    }
+
+    .pr-item .pr-pop {
+      inset-inline: 0;
+      inset-block-start: calc(100% + 0.6rem);
+      translate: 0 0;
+      inline-size: auto;
+      max-block-size: 45svh;
+    }
+  }
+</style>
+
+<script>
+  function setupProjects() {
+    const section = document.querySelector<HTMLElement>("[data-projects]");
+    if (!section) return;
+
+    const items = [...section.querySelectorAll<HTMLElement>(".pr-item")];
+    let loaded = items.filter(item => item.dataset.hidden !== "true").length;
+    const BATCH = 8;
+
+    const reveal = () => {
+      let revealed = 0;
+      for (const item of items) {
+        if (revealed >= BATCH) break;
+        if (item.dataset.hidden === "true") {
+          item.dataset.hidden = "false";
+          revealed += 1;
+          loaded += 1;
+        }
+      }
+    };
+
+    const nearBottom = () => {
+      const doc = document.documentElement;
+      return (
+        window.scrollY > 20 &&
+        window.scrollY + doc.clientHeight >= doc.scrollHeight - 300
+      );
+    };
+
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (loaded < items.length && nearBottom()) reveal();
+      },
+      { passive: true }
+    );
+
+    /*
+     * 详情弹窗的上下限制：以"当前视口"为界，保证整块详情不用滚动就能看全。
+     *   ① 顶部对齐放得下 → 顶部对齐；
+     *   ② 放不下但向上翻能放下 → 与项目底部对齐（向上展开）；
+     *   ③ 两边都放不下（视口很矮）→ 夹在视口内，并限制高度（内部可滚）。
+     */
+    const EDGE = 12;
+    let active: HTMLElement | null = null;
+
+    const alignPopover = () => {
+      if (!active) return;
+      const pop = active.querySelector<HTMLElement>(".pr-pop");
+      if (!pop) return;
+
+      pop.style.insetBlockStart = "";
+      pop.style.maxBlockSize = "";
+
+      const box = active.getBoundingClientRect();
+      const popHeight = pop.getBoundingClientRect().height;
+      const viewportH = window.innerHeight;
+
+      if (box.top + popHeight <= viewportH - EDGE) {
+        active.dataset.align = "top";
+        return;
+      }
+
+      if (box.bottom - popHeight >= EDGE) {
+        active.dataset.align = "bottom";
+        return;
+      }
+
+      // 两边都放不下：夹在视口内，必要时内部滚动
+      active.dataset.align = "fit";
+      const maxHeight = viewportH - EDGE * 2;
+      pop.style.maxBlockSize = `${maxHeight}px`;
+      const height = Math.min(popHeight, maxHeight);
+      const top = Math.min(Math.max(EDGE, box.top), viewportH - EDGE - height);
+      pop.style.insetBlockStart = `${Math.round(top - box.top)}px`;
+    };
+
+    for (const item of items) {
+      item.addEventListener("pointerenter", () => {
+        active = item;
+        alignPopover();
+      });
+      item.addEventListener("focusin", () => {
+        active = item;
+        alignPopover();
+      });
+      item.addEventListener("pointerleave", () => {
+        if (active === item) active = null;
+      });
+    }
+
+    let alignQueued = false;
+    const onLayoutChange = () => {
+      if (alignQueued || !active) return;
+      alignQueued = true;
+      requestAnimationFrame(() => {
+        alignQueued = false;
+        alignPopover();
+      });
+    };
+    window.addEventListener("scroll", onLayoutChange, { passive: true });
+    window.addEventListener("resize", onLayoutChange);
+
+    // 滚动时整条轴线"升温"
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer = 0;
+    window.addEventListener(
+      "scroll",
+      () => {
+        if (reduce.matches) return;
+        section.dataset.heat = "true";
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+          section.dataset.heat = "false";
+        }, 200);
+      },
+      { passive: true }
+    );
+  }
+
+  document.addEventListener("astro:page-load", setupProjects);
+</script>

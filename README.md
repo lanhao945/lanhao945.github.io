@@ -89,6 +89,46 @@ featured: false # 可选
 - 默认圆形裁剪（`rounded-full`），想改成圆角方形就把 `src/components/Header.astro` 里的 `rounded-full` 换成 `rounded-md`
 - 想让浏览器标签页图标也用这张图，替换 `public/favicon.svg` 或在 `src/layouts/Layout.astro` 里改 favicon 指向
 
+## 项目经历页（/projects）
+
+顶部导航「项目」进入，竖直左右交替的蛇形时间轴，hover / 键盘聚焦弹出详情。
+
+在 `src/content/projects/` 新建一个 `.md` 就是一个项目：
+
+```markdown
+---
+name: 项目名（不要写公司/甲方名）
+start: 2025-03 # 起
+end: 2025-10 # 止；进行中就不写，会显示「至今」
+role: 数据 / 后端 # 弹窗顶部那行角色
+summary: 一句话简介，显示在卡片上，建议 40–60 字
+stack: [点云, 逆向建模, Python]
+repos: # 参与过的仓库，可多条（私有仓库访客打不开是正常的）
+  - label: points_20250325
+    url: https://github.com/iblofcqu/points_20250325
+---
+
+## 背景
+
+为什么做这个项目。
+
+## 负责内容
+
+- 具体做的事情（从提交记录归纳）
+- …
+
+## 技术要点
+
+- 技术点、取舍
+```
+
+规则：
+
+- 页面按 `start` **倒序**（最新在最上）；想手动调顺序用 `weight`（数字小的靠前）
+- 首屏 6 个项目，往下滚接近底部时每次再追加 8 个
+- 节点位置显示时间周期（`start – end`，进行中显示「至今」），单行不换行
+- 详情弹窗向外侧展开（左项往左、右项往右），并限制在当前视口内：放不下会向上翻
+
 ## 想改样式
 
 | 想改什么                                 | 改哪里                                                |
