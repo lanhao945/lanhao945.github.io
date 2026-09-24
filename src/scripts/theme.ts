@@ -4,10 +4,9 @@ const DARK = "dark";
 
 function getPreferredTheme(): string {
   const stored = localStorage.getItem(THEME_KEY);
-  if (stored) return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? DARK
-    : LIGHT;
+  if (stored === LIGHT || stored === DARK) return stored;
+  // 站点默认暗色，不跟随系统
+  return DARK;
 }
 
 // Reuse the value already set by the inline FOUC-prevention script if available.
@@ -60,10 +59,5 @@ document.addEventListener("astro:before-swap", event => {
   }
 });
 
-// Sync with OS-level dark/light preference changes.
-window
-  .matchMedia("(prefers-color-scheme: dark)")
-  .addEventListener("change", ({ matches }) => {
-    themeValue = matches ? DARK : LIGHT;
-    persist();
-  });
+// 说明：默认暗色，用户通过右上角按钮切换后会记住选择；
+// 早期版本还会跟随系统偏好变化，这里已移除，避免覆盖用户的手动选择与站点默认值。
