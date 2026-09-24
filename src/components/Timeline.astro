@@ -32,6 +32,8 @@ const scrollable = columns.length > 1;
           tabindex={scrollable ? 0 : -1}
         >
           <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
+            {/* 纯装饰：沿轴线缓慢流动的光带（横屏生效） */}
+            <li class="timeline-flow" aria-hidden="true" />
             {columns.map((column, index) => (
               <li
                 class="timeline-year"
@@ -65,7 +67,23 @@ const scrollable = columns.length > 1;
     --tl-gap: 2rem;
     --tl-column: min(20rem, 72vw);
     --tl-inset: max(1rem, calc((100% - 46rem) / 2));
+    /* 光带强度与颜色：浅色克制、暗色为主场 */
+    --tl-flow: 0.28;
+    --tl-flow-hot: 0.6;
+    --tl-flow-color: var(--color-accent);
     margin-top: 2.5rem;
+  }
+
+  :global([data-theme="dark"]) .timeline {
+    --tl-flow: 0.55;
+    --tl-flow-hot: 1;
+    /* 暗色下轴线本身就是橙色，光带需要更亮的"热芯"才看得出来 */
+    --tl-flow-color: color-mix(in srgb, var(--color-accent) 60%, #fff);
+  }
+
+  /* 光带只在横屏出现（竖屏的轴线是分段的，另做设计） */
+  .timeline-flow {
+    display: none;
   }
 
   .timeline-empty {
@@ -218,6 +236,70 @@ const scrollable = columns.length > 1;
     }
 
     /* 轨道 = 上卡片 | 轴线 | 下卡片 三行网格，轴线天然是直的 */
+    /* 轴线上的流动光带：跟着轴线那一行居中 */
+    .timeline-flow {
+      display: block;
+      grid-row: 2;
+      grid-column: 1 / -1;
+      align-self: center;
+      /* 3px：中间 1px 压在轴线上，上下各 1px 形成光晕 */
+      block-size: 3px;
+      overflow: hidden;
+      pointer-events: none;
+      opacity: var(--tl-flow);
+      transition: opacity 0.6s ease;
+    }
+
+    .timeline-flow::before {
+      content: "";
+      display: block;
+      block-size: 100%;
+      inline-size: 32%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        var(--tl-flow-color),
+        transparent
+      );
+      transform: translateX(-100%);
+      animation: tl-flow 7s linear infinite;
+    }
+
+    /* 滚动时"升温"：快速点亮，松手后慢慢冷却 */
+    .timeline[data-heat="true"] .timeline-flow {
+      opacity: var(--tl-flow-hot);
+      transition-duration: 0.12s;
+    }
+
+    @keyframes tl-flow {
+      from {
+        transform: translateX(-100%);
+      }
+      to {
+        transform: translateX(320%);
+      }
+    }
+
+    /* 节点在滚动时轻微发光 */
+    .timeline-year-dot::before {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 9999px;
+      background: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--color-accent) 45%, transparent),
+        transparent 70%
+      );
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+
+    .timeline[data-heat="true"] .timeline-year-dot::before {
+      opacity: 1;
+      transition-duration: 0.12s;
+    }
+
     .timeline-track {
       display: grid;
       grid-template-columns: repeat(var(--tl-columns), var(--tl-column));
@@ -305,6 +387,13 @@ const scrollable = columns.length > 1;
 
     .timeline-year:last-child .timeline-year-dot::after {
       display: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .timeline-flow::before {
+        animation: none;
+        transform: translateX(120%);
+      }
     }
   }
 </style>
@@ -396,7 +485,24 @@ const scrollable = columns.length > 1;
       });
     };
 
-    viewport.addEventListener("scroll", update, { passive: true });
+    // 滚动时"升温"：滚动中点亮，停手后冷却
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let heatTimer = 0;
+
+    viewport.addEventListener(
+      "scroll",
+      () => {
+        update();
+        if (reduceMotion.matches) return;
+
+        timeline.dataset.heat = "true";
+        window.clearTimeout(heatTimer);
+        heatTimer = window.setTimeout(() => {
+          timeline.dataset.heat = "false";
+        }, 220);
+      },
+      { passive: true }
+    );
     window.addEventListener("resize", scheduleUpdate);
     horizontal.addEventListener("change", scheduleUpdate);
 
