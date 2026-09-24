@@ -162,7 +162,8 @@ const scrollable = columns.length > 1;
     .timeline {
       /* 横屏时不再和上面的文字左对齐，向两侧多占一些 */
       --tl-inset: max(1.5rem, calc((100% - 96rem) / 2));
-      --tl-edge: 1.5rem;
+      /* 与浏览器两侧的留白：随窗口宽度 2rem ~ 4.5rem 之间自适应 */
+      --tl-edge: clamp(2rem, 3.5vw, 4.5rem);
       display: flex;
       flex: 1 1 auto;
       min-block-size: 0;
