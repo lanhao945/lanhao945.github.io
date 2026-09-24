@@ -207,7 +207,7 @@ const scrollable = columns.length > 1;
       flex: 1 1 auto;
       min-block-size: 0;
       margin-top: 0.5rem;
-      /* 默认靠上/靠左（溢出时一定滚得到）；放得下时由下面两条规则切成居中 */
+      /* 纵向靠上：真正的上下居中由轨道自己做（内容再高也不会被裁掉） */
       align-items: flex-start;
       justify-content: flex-start;
       overflow-x: auto;
@@ -216,13 +216,9 @@ const scrollable = columns.length > 1;
       overscroll-behavior: contain;
       scroll-padding-inline: var(--tl-inset);
       scrollbar-width: thin;
-      padding-block-end: 0.5rem;
     }
 
-    .timeline[data-overflow-y="false"] .timeline-viewport {
-      align-items: center;
-    }
-
+    /* 放得下时整体水平居中，放不下就靠左排开、可滚动 */
     .timeline[data-overflow-x="false"] .timeline-viewport {
       justify-content: center;
     }
@@ -236,6 +232,10 @@ const scrollable = columns.length > 1;
       column-gap: var(--tl-gap);
       row-gap: 0.25rem;
       flex: none;
+      /* 至少和可视区一样高，多余空间自动上下均分；内容更高时自然撑开并可滚动 */
+      block-size: max-content;
+      min-block-size: 100%;
+      align-content: center;
     }
 
     /* 年份这一层不生成盒子，让里面的三块直接落到轨道网格上 */
