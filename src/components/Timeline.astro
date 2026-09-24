@@ -194,7 +194,12 @@ const scrollable = columns.length > 1;
       overflow-y: auto;
       overscroll-behavior: contain;
       scroll-padding-inline: var(--tl-inset);
-      scrollbar-width: thin;
+      /* 隐藏原生滚动条：滚动反馈交给底部那条自绘进度线 */
+      scrollbar-width: none;
+    }
+
+    .timeline-viewport::-webkit-scrollbar {
+      display: none;
     }
 
     /* 两侧渐隐：内容滚出边界时淡出，而不是被硬切 */
