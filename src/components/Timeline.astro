@@ -317,23 +317,72 @@ const scrollable = columns.length > 1;
 
 <script>
   const HORIZONTAL_QUERY = "(min-width: 900px) and (orientation: landscape)";
+  const horizontal = window.matchMedia(HORIZONTAL_QUERY);
 
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
 
-  function setupTimeline() {
+  const getTimeline = () => {
     const timeline = document.querySelector<HTMLElement>("[data-timeline]");
     const viewport = timeline?.querySelector<HTMLElement>(
       "[data-timeline-viewport]"
     );
-    if (!timeline || !viewport) return;
+    return timeline && viewport ? { timeline, viewport } : null;
+  };
+
+  /*
+   * 滚轮 → 时间轴横向滚动。
+   * 监听挂在 document 上、只挂一次：视图切换后时间轴元素会换成新的，
+   * 挂在元素上的监听会随之失效，这里每次事件重新查询当前节点。
+   */
+  function handleWheel(event: WheelEvent) {
+    // Ctrl+滚轮（缩放）、竖屏/窄屏、触控板横向滑动：都交回浏览器
+    if (event.ctrlKey || !horizontal.matches) return;
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+
+    const parts = getTimeline();
+    if (!parts) return;
+    const { viewport } = parts;
+
+    const maxX = viewport.scrollWidth - viewport.clientWidth;
+    if (maxX <= 1) return;
+
+    // 首页整屏接管；其它页面只有指针在时间轴里才接管
+    const onHome = document.body.classList.contains("home");
+    if (!onHome && !event.composedPath().includes(viewport)) return;
+
+    const step =
+      event.deltaMode === 1
+        ? event.deltaY * 16
+        : event.deltaMode === 2
+          ? event.deltaY * viewport.clientHeight
+          : event.deltaY;
+
+    // 窗口特别矮、一列装不下时：先把这一列纵向看完，再继续往右
+    const maxY = viewport.scrollHeight - viewport.clientHeight;
+    if (maxY > 8 && !event.shiftKey) {
+      const nextY = clamp(viewport.scrollTop + step, 0, maxY);
+      if (nextY !== viewport.scrollTop) {
+        viewport.scrollTop = nextY;
+        event.preventDefault();
+        return;
+      }
+    }
+
+    event.preventDefault();
+    viewport.scrollLeft = clamp(viewport.scrollLeft + step, 0, maxX);
+  }
+
+  function setupTimeline() {
+    const parts = getTimeline();
+    if (!parts) return;
+    const { timeline, viewport } = parts;
 
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
     const hint = timeline.querySelector<HTMLElement>("[data-timeline-hint]");
     const progress = timeline.querySelector<HTMLElement>(
       "[data-timeline-progress]"
     );
-    const horizontal = window.matchMedia(HORIZONTAL_QUERY);
 
     const update = () => {
       const max = viewport.scrollWidth - viewport.clientWidth;
@@ -356,7 +405,7 @@ const scrollable = columns.length > 1;
       }
     };
 
-    // 居中/靠边的切换会改变滚动条与可视高度，用 rAF 合并重算，避免状态过期
+    // 居中/靠边切换会改变滚动条与可视高度，用 rAF 合并重算，避免状态过期
     let queued = false;
     const scheduleUpdate = () => {
       if (queued) return;
@@ -377,48 +426,10 @@ const scrollable = columns.length > 1;
       if (track) observer.observe(track);
     }
 
-    /*
-     * 宽屏横屏时把纵向滚轮转成时间轴的横向滚动：
-     * - 触控板横向滑动、Ctrl+滚轮（缩放）依旧交回浏览器
-     * - 内容高于可视区时（窗口很矮）先纵向走完，再横向移动
-     */
-    if (viewport.dataset.wheelBound !== "true") {
-      viewport.dataset.wheelBound = "true";
-      const surface =
-        document.querySelector<HTMLElement>('[data-layout="index"]') ??
-        viewport;
-
-      surface.addEventListener(
-        "wheel",
-        event => {
-          if (!horizontal.matches || event.ctrlKey) return;
-          if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-
-          const maxX = viewport.scrollWidth - viewport.clientWidth;
-          if (maxX <= 1) return;
-
-          const step =
-            event.deltaMode === 1
-              ? event.deltaY * 16
-              : event.deltaMode === 2
-                ? event.deltaY * viewport.clientHeight
-                : event.deltaY;
-
-          const maxY = viewport.scrollHeight - viewport.clientHeight;
-          if (maxY > 1 && !event.shiftKey) {
-            const nextY = clamp(viewport.scrollTop + step, 0, maxY);
-            if (nextY !== viewport.scrollTop) {
-              viewport.scrollTop = nextY;
-              event.preventDefault();
-              return;
-            }
-          }
-
-          event.preventDefault();
-          viewport.scrollLeft = clamp(viewport.scrollLeft + step, 0, maxX);
-        },
-        { passive: false }
-      );
+    // document 只挂一次滚轮监听，避免视图切换后重复绑定
+    if (document.documentElement.dataset.timelineWheel !== "true") {
+      document.documentElement.dataset.timelineWheel = "true";
+      document.addEventListener("wheel", handleWheel, { passive: false });
     }
 
     scheduleUpdate();
