@@ -80,6 +80,15 @@ featured: false # 可选
 
 > 日期请带上 `+08:00` 时区偏移，否则在 CI（UTC 环境）构建时会差 8 小时。
 
+## 换头像
+
+把图片放到 **`src/assets/images/avatar.png`**（也支持 `jpg / jpeg / webp / avif / svg`，文件名必须是 `avatar`），页头就会用头像替换站名文字；
+没有这个文件时自动退回显示站名文字，所以删掉图片也不会把站点弄坏。
+
+- 建议是**正方形**图片，边长 ≥ 144px（页头显示 36×36，源图按 2 倍渲染，高清屏不糊）
+- 默认圆形裁剪（`rounded-full`），想改成圆角方形就把 `src/components/Header.astro` 里的 `rounded-full` 换成 `rounded-md`
+- 想让浏览器标签页图标也用这张图，替换 `public/favicon.svg` 或在 `src/layouts/Layout.astro` 里改 favicon 指向
+
 ## 想改样式
 
 | 想改什么                                 | 改哪里                                                |
