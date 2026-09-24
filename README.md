@@ -88,7 +88,6 @@ featured: false # 可选
 | 界面文案（中文）                         | `src/i18n/lang/zh-CN.ts`                              |
 | 颜色（明/暗主题）                        | `src/styles/theme.css`                                |
 | 时间轴布局与滚动行为                     | `src/components/Timeline.astro`、`TimelineItem.astro` |
-| 首页顶部那行联系方式                     | `src/pages/index.astro`                               |
 
 配色 token：`--background` `--foreground` `--accent` `--muted` `--muted-foreground` `--border`，改这一组就能换整体气质。
 
