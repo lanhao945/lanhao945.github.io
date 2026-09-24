@@ -4,37 +4,26 @@ import { render } from "astro:content";
 
 type Props = {
   projects: CollectionEntry<"projects">[];
-  /** 每行几个项目（决定蛇形折返点） */
-  perRow?: number;
-  /** 首屏显示几行，其余等滚到底部附近再展开 */
+  /** 首屏显示几行（= 几个项目），其余等滚到底部附近再展开 */
   initialRows?: number;
 };
 
-const { projects, perRow = 3, initialRows = 4 } = Astro.props;
+const { projects, initialRows = 5 } = Astro.props;
 
 type Row = {
   dir: "ltr" | "rtl";
   items: CollectionEntry<"projects">[];
-  /** 拐角行：只放一个项目，位置在折返的那一端 */
-  corner?: boolean;
 };
 
-const rows: Row[] = [];
-let cursor = 0;
-let flips = 0;
-while (cursor < projects.length) {
-  const dir: "ltr" | "rtl" = flips % 2 === 0 ? "ltr" : "rtl";
-  const batch = projects.slice(cursor, cursor + perRow);
-  rows.push({ dir, items: batch });
-  cursor += batch.length;
-
-  // 满行之后、且还有内容：在折返处放一个单独的项目（拐角）
-  if (batch.length === perRow && cursor < projects.length) {
-    rows.push({ dir, items: [projects[cursor]], corner: true });
-    cursor += 1;
-  }
-  flips += 1;
-}
+/**
+ * 一个项目一行：折返连线在行末，项目框贴在相反的一端。
+ * 第 1 行：项目在左、竖线在右；第 2 行：竖线在左、项目在右……
+ * 这样两条横轴 + 折返竖线首尾相连，是一条不断开的时间轴。
+ */
+const rows: Row[] = projects.map((project, index) => ({
+  dir: index % 2 === 0 ? "ltr" : "rtl",
+  items: [project],
+}));
 
 const contents = await Promise.all(
   projects.map(async project => ({
@@ -52,12 +41,11 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
         <li
           class="projects-row"
           data-dir={row.dir}
-          data-corner={row.corner ? "true" : "false"}
           data-hidden={rowIndex >= initialRows ? "true" : "false"}
         >
           <span class="projects-rails" aria-hidden="true" />
-          <div class="projects-boxes" style={`--per-row: ${perRow}`}>
-            {row.items.map((project, order) => {
+          <div class="projects-boxes">
+            {row.items.map(project => {
               const Content = contentMap.get(project.id);
               const { name, start, end, role, summary, stack, repos } =
                 project.data;
@@ -65,11 +53,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
               const primary = repos[0];
 
               return (
-                <article
-                  class="project-box"
-                  data-project={project.id}
-                  style={`--pr-order: ${order}`}
-                >
+                <article class="project-box" data-project={project.id}>
                   <p class="project-period">{period}</p>
                   <h2 class="project-name">
                     {primary ? (
@@ -236,25 +220,16 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     inset-inline-start: var(--pr-inset);
   }
 
-  /* 拐角行：单个项目贴在折返端（ltr 在右、rtl 在左） */
-  .projects-row[data-corner="true"] .project-box {
-    grid-column: -2 / -1;
-  }
-
+  /* 每行一个项目：占一半宽度，奇数行贴左、偶数行贴右 */
   .projects-boxes {
     display: grid;
-    grid-template-columns: repeat(var(--per-row, 5), minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1.25rem;
     padding-block: 1.5rem;
   }
 
-  /* 右→左的行：视觉顺序反转，DOM 顺序仍是时间倒序 */
-  .projects-row[data-dir="rtl"] .projects-boxes {
-    direction: rtl;
-  }
-
   .projects-row[data-dir="rtl"] .project-box {
-    direction: ltr;
+    grid-column: 2 / -1;
   }
 
   .project-box {
@@ -453,7 +428,6 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   @media (prefers-reduced-motion: no-preference) {
     .project-box {
       animation: pr-enter 0.45s ease-out both;
-      animation-delay: calc(var(--pr-order, 0) * 45ms);
     }
 
     @keyframes pr-enter {
