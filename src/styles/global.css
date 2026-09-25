@@ -11,6 +11,15 @@
     scrollbar-width: auto;
     scrollbar-color: var(--color-muted) transparent;
   }
+
+  /*
+   * 始终为垂直滚动条预留槽位：
+   * 首页横屏会隐藏滚动条，其它页面有滚动条；若不预留，
+   * 两种页面的内容区宽度不同，导航等居中内容会在切换时横向位移。
+   */
+  html {
+    scrollbar-gutter: stable;
+  }
   a,
   button {
     @apply outline-accent outline-offset-1 focus-visible:no-underline focus-visible:outline-2 focus-visible:outline-dashed;
