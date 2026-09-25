@@ -88,7 +88,7 @@ const items = [...tags]
   @media (orientation: landscape) {
     .tag-cloud {
       flex: 0 0 auto;
-      block-size: clamp(14rem, 54vh, 42rem);
+      block-size: clamp(14rem, 58vh, 44rem);
       margin-block: clamp(0.75rem, 2.5vh, 2rem);
       overflow: hidden;
     }
@@ -222,7 +222,7 @@ const items = [...tags]
   /* 超过这个数量就不再进入词云，改在下方流式区域展示。 */
   const MAX_CLOUD_TAGS = 80;
   /* 字号可读性下限；低于它时减少词云标签数量，而不是继续缩小。 */
-  const MIN_CLOUD_SCALE = 0.8;
+  const MIN_CLOUD_SCALE = 0.72;
 
   type CloudBox = {
     x: number;
@@ -381,6 +381,8 @@ const items = [...tags]
   };
 
   function setupCloud(container: HTMLElement) {
+    if (container.dataset.cloudReady === "true") return;
+
     const stage = container.querySelector<HTMLElement>(
       "[data-tag-cloud-stage]"
     );
@@ -400,6 +402,8 @@ const items = [...tags]
       );
 
     if (!stage || !shell || !more || !moreList || entries.length === 0) return;
+
+    container.dataset.cloudReady = "true";
 
     const orientation = window.matchMedia("(orientation: landscape)");
     let lastKey = "";
@@ -496,7 +500,7 @@ const items = [...tags]
       }
 
       const count = low;
-      const scaleSteps = [MIN_CLOUD_SCALE, 0.85, 0.92, 1];
+      const scaleSteps = [MIN_CLOUD_SCALE, 0.8, 0.88, 0.96];
       let best: {
         count: number;
         scale: number;
@@ -549,5 +553,15 @@ const items = [...tags]
     document.querySelectorAll<HTMLElement>(CLOUD_SELECTOR).forEach(setupCloud);
   }
 
-  document.addEventListener("astro:page-load", setupAllTagClouds);
+  const initTagClouds = () => setupAllTagClouds();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTagClouds, {
+      once: true,
+    });
+  } else {
+    initTagClouds();
+  }
+
+  document.addEventListener("astro:page-load", initTagClouds);
 </script>

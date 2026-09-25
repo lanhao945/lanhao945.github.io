@@ -518,6 +518,7 @@ const scrollable = columns.length > 1;
     const parts = getTimeline();
     if (!parts) return;
     const { timeline, viewport } = parts;
+    if (timeline.dataset.timelineReady === "true") return;
 
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
 
@@ -600,8 +601,17 @@ const scrollable = columns.length > 1;
       document.addEventListener("wheel", handleWheel, { passive: false });
     }
 
+    timeline.dataset.timelineReady = "true";
     scheduleUpdate();
   }
 
-  document.addEventListener("astro:page-load", setupTimeline);
+  const initTimeline = () => setupTimeline();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTimeline, { once: true });
+  } else {
+    initTimeline();
+  }
+
+  document.addEventListener("astro:page-load", initTimeline);
 </script>
