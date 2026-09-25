@@ -1,15 +1,16 @@
 ---
 import { getRelativeLocaleUrl } from "astro:i18n";
-import { getCollection } from "astro:content";
 import Layout from "@/layouts/Layout.astro";
 import Header from "@/components/Header.astro";
 import Main from "@/components/Main.astro";
 import Footer from "@/components/Footer.astro";
-import Datetime from "@/components/Datetime.astro";
 import { getPostUrl } from "@/utils/getPostPaths";
 import { toTransitionName } from "@/utils/toTransitionName";
-import { postFilter } from "@/utils/postFilter";
 import { getPostsByGroupCondition } from "./_utils/getPostsByGroupCondition";
+import {
+  ARCHIVE_INITIAL_ITEMS,
+  getArchivePosts,
+} from "./_utils/getArchiveData";
 import { useTranslations } from "@/i18n";
 import config from "@/config";
 
@@ -23,15 +24,27 @@ if (!config.features.showArchives && notFoundUrl) {
 
 const t = useTranslations(locale);
 const monthFormatter = new Intl.DateTimeFormat(locale, { month: "long" });
-const INITIAL_ITEMS = 8;
+const archiveDataBase = getRelativeLocaleUrl(locale, "archives/data").replace(
+  /\/$/,
+  ""
+);
 
-const posts = await getCollection("posts");
+const posts = await getArchivePosts();
+const initialCount = Math.min(ARCHIVE_INITIAL_ITEMS, posts.length);
+const hasMore = posts.length > initialCount;
+
+const formatDate = (date: Date, timezone?: string) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone ?? config.site.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
 let postOrder = 0;
 
 const yearGroups = Object.entries(
-  getPostsByGroupCondition(posts.filter(postFilter), post =>
-    post.data.pubDatetime.getFullYear()
-  )
+  getPostsByGroupCondition(posts, post => post.data.pubDatetime.getFullYear())
 )
   .sort(([yearA], [yearB]) => Number(yearB) - Number(yearA))
   .map(([year, yearPosts]) => {
@@ -54,7 +67,7 @@ const yearGroups = Object.entries(
           month: Number(month),
           count: monthItems.length,
           posts: monthItems,
-          visibleInitially: monthItems.some(item => item.order < INITIAL_ITEMS),
+          visibleInitially: monthItems.some(item => item.order < initialCount),
         };
       });
 
@@ -76,7 +89,12 @@ const yearGroups = Object.entries(
     hideHeader
     class="archives-main"
   >
-    <div class="archive-timeline" data-archive-timeline>
+    <div
+      class="archive-timeline"
+      data-archive-timeline
+      data-archive-next={hasMore ? "1" : ""}
+      data-archive-endpoint={archiveDataBase}
+    >
       {
         yearGroups.map(({ year, count, months, visibleInitially }) => (
           <section
@@ -110,38 +128,46 @@ const yearGroups = Object.entries(
                     <sup>{monthCount}</sup>
                   </div>
 
-                  <ul class="archive-posts">
-                    {monthPosts.map(({ post, order }) => (
-                      <li
-                        class="archive-post"
-                        data-archive-item
-                        data-hidden={order >= INITIAL_ITEMS ? "true" : "false"}
-                      >
-                        <a
-                          class="archive-post-link"
-                          href={getPostUrl(post.id, post.filePath, locale)}
-                        >
-                          <h3
-                            class="archive-post-title"
-                            transition:name={toTransitionName(post.data.title)}
+                  <ul
+                    class="archive-posts"
+                    data-archive-month-list
+                    data-year={year}
+                    data-month={month}
+                  >
+                    {monthPosts
+                      .filter(item => item.order < initialCount)
+                      .map(({ post }) => (
+                        <li class="archive-post">
+                          <a
+                            class="archive-post-link"
+                            href={getPostUrl(post.id, post.filePath, locale)}
                           >
-                            {post.data.title}
-                          </h3>
-                        </a>
+                            <h3
+                              class="archive-post-title"
+                              transition:name={toTransitionName(
+                                post.data.title
+                              )}
+                            >
+                              {post.data.title}
+                            </h3>
+                          </a>
 
-                        <div class="archive-post-date">
-                          <Datetime
-                            pubDatetime={post.data.pubDatetime}
-                            modDatetime={post.data.modDatetime}
-                            timezone={post.data.timezone}
-                          />
-                        </div>
+                          <div class="archive-post-date">
+                            <time
+                              datetime={post.data.pubDatetime.toISOString()}
+                            >
+                              {formatDate(
+                                post.data.pubDatetime,
+                                post.data.timezone
+                              )}
+                            </time>
+                          </div>
 
-                        <p class="archive-post-description">
-                          {post.data.description}
-                        </p>
-                      </li>
-                    ))}
+                          <p class="archive-post-description">
+                            {post.data.description}
+                          </p>
+                        </li>
+                      ))}
                   </ul>
                 </div>
               )
@@ -178,8 +204,7 @@ const yearGroups = Object.entries(
   }
 
   .archive-year[data-empty="true"],
-  .archive-month[data-empty="true"],
-  .archive-post[data-hidden="true"] {
+  .archive-month[data-empty="true"] {
     display: none;
   }
 
@@ -200,15 +225,15 @@ const yearGroups = Object.entries(
     position: relative;
     display: flex;
     align-items: baseline;
-    gap: 0.4rem;
     justify-content: flex-end;
+    gap: 0.4rem;
     inline-size: 7rem;
     margin: 0 0 0.65rem;
-    text-align: right;
     white-space: nowrap;
     font-size: 1.25rem;
     font-weight: 700;
     line-height: 1.3;
+    text-align: right;
   }
 
   .archive-year-label::before {
@@ -267,7 +292,7 @@ const yearGroups = Object.entries(
   .archive-posts {
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
+    gap: 0.75rem;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -296,6 +321,8 @@ const yearGroups = Object.entries(
 
   .archive-post-date {
     margin-top: 0.05rem;
+    color: var(--color-muted-foreground);
+    font-size: 0.8125rem;
   }
 
   .archive-post-description {
@@ -310,14 +337,14 @@ const yearGroups = Object.entries(
       padding-inline-start: 1.5rem;
     }
 
+    .archive-timeline::before {
+      inset-inline-start: 0.4rem;
+    }
+
     .archive-year-label {
       justify-content: flex-start;
       inline-size: auto;
       text-align: left;
-    }
-
-    .archive-timeline::before {
-      inset-inline-start: 0.4rem;
     }
 
     .archive-year-label::before,
@@ -349,113 +376,173 @@ const yearGroups = Object.entries(
 </style>
 
 <script>
+  type ArchivePostPayload = {
+    year: number;
+    month: number;
+    title: string;
+    description: string;
+    publishedAt: string;
+    timezone: string;
+    url: string;
+  };
+
+  type ArchiveChunkPayload = {
+    posts: ArchivePostPayload[];
+    next: number | null;
+  };
+
+  const formatArchiveDate = (post: ArchivePostPayload) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: post.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(post.publishedAt));
+
+  const createArchivePost = (post: ArchivePostPayload) => {
+    const item = document.createElement("li");
+    item.className = "archive-post";
+
+    const link = document.createElement("a");
+    link.className = "archive-post-link";
+    link.href = post.url;
+
+    const title = document.createElement("h3");
+    title.className = "archive-post-title";
+    title.textContent = post.title;
+    link.append(title);
+
+    const date = document.createElement("div");
+    date.className = "archive-post-date";
+
+    const time = document.createElement("time");
+    time.dateTime = post.publishedAt;
+    time.textContent = formatArchiveDate(post);
+    date.append(time);
+
+    const description = document.createElement("p");
+    description.className = "archive-post-description";
+    description.textContent = post.description;
+
+    item.append(link, date, description);
+    return item;
+  };
+
   function setupArchiveLoading() {
     const root = document.querySelector<HTMLElement>("[data-archive-timeline]");
-    if (!root || root.dataset.archiveReady === "true") return;
+    if (!root || root.dataset.archiveLoadingReady === "true") return;
 
-    const items = [
-      ...root.querySelectorAll<HTMLElement>("[data-archive-item]"),
-    ];
-    const months = [
-      ...root.querySelectorAll<HTMLElement>("[data-archive-month]"),
-    ];
-    const years = [
-      ...root.querySelectorAll<HTMLElement>("[data-archive-year]"),
-    ];
+    const endpoint = root.dataset.archiveEndpoint;
     const sentinel = root.querySelector<HTMLElement>("[data-archive-sentinel]");
+    let next = Number(root.dataset.archiveNext || "0");
 
-    let remainingHidden = items.filter(
-      item => item.dataset.hidden === "true"
-    ).length;
+    if (!endpoint || !sentinel || !next) return;
 
-    if (remainingHidden === 0) return;
+    root.dataset.archiveLoadingReady = "true";
 
-    root.dataset.archiveReady = "true";
+    let loading = false;
+    let observer: IntersectionObserver | null = null;
 
-    const updateGroups = () => {
-      for (const month of months) {
-        const hasVisible = [
-          ...month.querySelectorAll<HTMLElement>("[data-archive-item]"),
-        ].some(item => item.dataset.hidden !== "true");
-        month.dataset.empty = hasVisible ? "false" : "true";
-      }
+    const nearSentinel = () =>
+      sentinel.getBoundingClientRect().top <= window.innerHeight + 400;
 
-      for (const year of years) {
-        const hasVisible = [
-          ...year.querySelectorAll<HTMLElement>("[data-archive-month]"),
-        ].some(month => month.dataset.empty !== "true");
-        year.dataset.empty = hasVisible ? "false" : "true";
-      }
-    };
+    const appendPosts = (posts: ArchivePostPayload[]) => {
+      const groups = new Map<
+        string,
+        { year: number; month: number; items: ArchivePostPayload[] }
+      >();
 
-    const BATCH = 8;
+      for (const post of posts) {
+        const key = `${post.year}-${post.month}`;
+        const group = groups.get(key);
 
-    const reveal = () => {
-      let revealed = 0;
-
-      for (const item of items) {
-        if (revealed >= BATCH) break;
-        if (item.dataset.hidden === "true") {
-          item.dataset.hidden = "false";
-          revealed += 1;
-          remainingHidden -= 1;
+        if (group) {
+          group.items.push(post);
+        } else {
+          groups.set(key, {
+            year: post.year,
+            month: post.month,
+            items: [post],
+          });
         }
       }
 
-      if (revealed === 0) return;
-      updateGroups();
+      for (const group of groups.values()) {
+        const list = root.querySelector<HTMLElement>(
+          `[data-archive-month-list][data-year="${group.year}"][data-month="${group.month}"]`
+        );
 
-      if (remainingHidden <= 0) {
-        observer?.disconnect();
-        window.removeEventListener("scroll", onScroll);
+        if (!list) continue;
+
+        const fragment = document.createDocumentFragment();
+        for (const post of group.items) {
+          fragment.append(createArchivePost(post));
+        }
+        list.append(fragment);
+
+        const month = list.closest("[data-archive-month]");
+        const year = list.closest("[data-archive-year]");
+        if (month instanceof HTMLElement) month.dataset.empty = "false";
+        if (year instanceof HTMLElement) year.dataset.empty = "false";
       }
     };
 
-    let queued = false;
-    const queueReveal = () => {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(() => {
-        queued = false;
-        reveal();
-      });
+    const cleanup = () => {
+      observer?.disconnect();
+      window.removeEventListener("scroll", onScroll);
     };
 
-    const nearBottom = () => {
-      const doc = document.documentElement;
-      return window.scrollY + doc.clientHeight >= doc.scrollHeight - 500;
+    const loadNext = async () => {
+      if (loading || !next) return;
+      loading = true;
+
+      try {
+        const response = await fetch(`${endpoint}/${next}.json`, {
+          headers: { Accept: "application/json" },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Archive chunk ${next} failed: ${response.status}`);
+        }
+
+        const data = (await response.json()) as ArchiveChunkPayload;
+        appendPosts(data.posts);
+        next = Number(data.next ?? 0);
+        root.dataset.archiveNext = next ? String(next) : "";
+      } catch {
+        // Keep `next` unchanged so the next scroll/intersection can retry.
+      } finally {
+        loading = false;
+      }
+
+      if (!next) {
+        cleanup();
+      } else if (nearSentinel()) {
+        requestAnimationFrame(() => void loadNext());
+      }
     };
 
-    const onScroll = () => {
-      if (nearBottom()) queueReveal();
-    };
+    function onScroll() {
+      if (nearSentinel()) void loadNext();
+    }
 
-    const observer =
-      sentinel && typeof IntersectionObserver !== "undefined"
-        ? new IntersectionObserver(
-            entries => {
-              if (entries.some(entry => entry.isIntersecting)) {
-                queueReveal();
-              }
-            },
-            { rootMargin: "500px 0px" }
-          )
-        : null;
+    if (typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        entries => {
+          if (entries.some(entry => entry.isIntersecting)) {
+            void loadNext();
+          }
+        },
+        { rootMargin: "400px 0px" }
+      );
+      observer.observe(sentinel);
+    }
 
-    observer?.observe(sentinel as Element);
     window.addEventListener("scroll", onScroll, { passive: true });
 
-    document.addEventListener(
-      "astro:before-swap",
-      () => {
-        observer?.disconnect();
-        window.removeEventListener("scroll", onScroll);
-      },
-      { once: true }
-    );
+    document.addEventListener("astro:before-swap", cleanup, { once: true });
 
-    updateGroups();
-    if (nearBottom()) queueReveal();
+    if (nearSentinel()) void loadNext();
   }
 
   const initArchiveLoading = () => setupArchiveLoading();
