@@ -257,10 +257,12 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
   /*
    * —— 详情弹窗 ——
+   * 只在横屏（电脑）预览中出现：竖屏 / 窄屏不展示详情卡片。
    * 从卡片"外侧"展开：节点在左的项目往左展开、节点在右的往右展开，
    * 这样弹窗落在页面留白里，不会压住中间的项目列表。
    */
   .pr-pop {
+    display: none;
     position: absolute;
     /* 与卡片顶部对齐：靠近页首的项目也不会把弹窗顶出视口 */
     inset-block-start: 0;
@@ -307,6 +309,13 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   .pr-item:focus-within .pr-pop {
     opacity: 1;
     visibility: visible;
+  }
+
+  /* 仅横屏（电脑）预览启用详情卡片，断点与首页时间轴保持一致 */
+  @media (min-width: 900px) and (orientation: landscape) {
+    .pr-pop {
+      display: block;
+    }
   }
 
   .pr-pop-role {
@@ -427,14 +436,6 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     .pr-card {
       max-inline-size: none;
     }
-
-    .pr-item .pr-pop {
-      inset-inline: 0;
-      inset-block-start: calc(100% + 0.6rem);
-      translate: 0 0;
-      inline-size: auto;
-      max-block-size: 45svh;
-    }
   }
 </style>
 
@@ -446,6 +447,8 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     const items = [...section.querySelectorAll<HTMLElement>(".pr-item")];
     let loaded = items.filter(item => item.dataset.hidden !== "true").length;
     const BATCH = 8;
+    const DETAILS_QUERY = "(min-width: 900px) and (orientation: landscape)";
+    const detailsEnabled = window.matchMedia(DETAILS_QUERY);
 
     const reveal = () => {
       let revealed = 0;
@@ -485,7 +488,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     let active: HTMLElement | null = null;
 
     const alignPopover = () => {
-      if (!active) return;
+      if (!active || !detailsEnabled.matches) return;
       const pop = active.querySelector<HTMLElement>(".pr-pop");
       if (!pop) return;
 
@@ -517,10 +520,12 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
     for (const item of items) {
       item.addEventListener("pointerenter", () => {
+        if (!detailsEnabled.matches) return;
         active = item;
         alignPopover();
       });
       item.addEventListener("focusin", () => {
+        if (!detailsEnabled.matches) return;
         active = item;
         alignPopover();
       });
@@ -540,6 +545,11 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     };
     window.addEventListener("scroll", onLayoutChange, { passive: true });
     window.addEventListener("resize", onLayoutChange);
+
+    // 从横屏切回竖屏时立即收起详情卡片
+    detailsEnabled.addEventListener("change", () => {
+      if (!detailsEnabled.matches) active = null;
+    });
 
     // 滚动时整条轴线"升温"
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
