@@ -172,7 +172,7 @@ const yearGroups = Object.entries(
     content: "";
     position: absolute;
     inset-block: 0.5rem 0;
-    inset-inline-start: calc(6.5rem + 0.625rem);
+    inset-inline-start: calc(7rem + 1.5rem);
     width: 1px;
     background: var(--color-border);
   }
@@ -202,7 +202,7 @@ const yearGroups = Object.entries(
     align-items: baseline;
     gap: 0.4rem;
     justify-content: flex-end;
-    inline-size: 6.5rem;
+    inline-size: 7rem;
     margin: 0 0 0.65rem;
     text-align: right;
     white-space: nowrap;
@@ -214,7 +214,7 @@ const yearGroups = Object.entries(
   .archive-year-label::before {
     content: "";
     position: absolute;
-    left: calc(6.5rem + 0.625rem);
+    left: calc(7rem + 1.5rem);
     top: 0.55rem;
     width: 0.7rem;
     height: 0.7rem;
@@ -232,15 +232,15 @@ const yearGroups = Object.entries(
   .archive-month {
     position: relative;
     display: grid;
-    grid-template-columns: 6.5rem minmax(0, 1fr);
-    column-gap: 1.25rem;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    column-gap: 3rem;
     padding-block: 0.6rem;
   }
 
   .archive-month-label {
     position: relative;
     padding-top: 0.1rem;
-    padding-inline-end: 0.35rem;
+    padding-inline-end: 0.5rem;
     font-size: 0.95rem;
     font-weight: 600;
     text-align: right;
@@ -249,7 +249,7 @@ const yearGroups = Object.entries(
   .archive-month-label::before {
     content: "";
     position: absolute;
-    left: calc(6.5rem + 0.625rem);
+    left: calc(7rem + 1.5rem);
     top: 0.55rem;
     width: 0.42rem;
     height: 0.42rem;
