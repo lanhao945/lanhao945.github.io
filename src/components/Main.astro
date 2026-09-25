@@ -7,6 +7,8 @@ type Props = {
   pageDesc?: string;
   /** 不在页面上显示标题与描述（标题仍以 sr-only 保留，供读屏与 SEO 使用） */
   hideHeader?: boolean;
+  /** 去掉底部内边距，供需要铺满可用高度的页面使用 */
+  noPadding?: boolean;
   class?: string;
 };
 
@@ -14,6 +16,7 @@ const {
   pageTitle,
   pageDesc,
   hideHeader = false,
+  noPadding = false,
   class: className,
 } = Astro.props;
 
@@ -26,7 +29,7 @@ const backUrl = config.features.showBackButton
 <main
   data-backUrl={backUrl}
   id="main-content"
-  class:list={["app-layout pb-4", className]}
+  class:list={["app-layout", { "pb-4": !noPadding }, className]}
 >
   <h1
     class:list={[

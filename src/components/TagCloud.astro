@@ -65,21 +65,26 @@ const items = [...tags]
         ))
       }
     </ul>
+    <div class="tag-cloud-fade" aria-hidden="true"></div>
   </div>
-  <p class="tag-cloud-hint" aria-hidden="true">
-    滚轮缩放 · 双击空白复位 · 点击标签跳转
-  </p>
 </div>
 
 <style>
   .tag-cloud-shell {
     position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    flex-direction: column;
   }
 
   .tag-cloud {
     position: relative;
-    max-inline-size: 40rem;
-    margin-inline: auto;
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    min-block-size: 0;
+    inline-size: 100%;
   }
 
   /* 没有 JS / 窄屏时的流式回退：所有标签按顺序换行展示 */
@@ -89,14 +94,15 @@ const items = [...tags]
     align-items: center;
     justify-content: center;
     gap: clamp(0.5rem, 1.2vw, 0.9rem) clamp(0.8rem, 1.8vw, 1.35rem);
+    inline-size: 100%;
     margin: 0;
-    padding-block: 1.25rem;
+    padding: 1rem;
     list-style: none;
   }
 
-  /* 螺旋排布完成后：固定云朵视口，标签绝对定位 */
+  /* 螺旋排布完成后：云朵铺满可用区域，标签绝对定位 */
   .tag-cloud[data-ready="true"] {
-    block-size: var(--cloud-height, clamp(19rem, 46vh, 29rem));
+    display: block;
     overflow: hidden;
   }
 
@@ -214,25 +220,38 @@ const items = [...tags]
     transform: scale(1);
   }
 
-  .tag-cloud-hint {
-    margin: 0.25rem 0 0;
-    text-align: center;
-    font-size: 0.75rem;
-    color: var(--color-muted-foreground);
+  /*
+   * 缩放时在椭圆边界做渐变淡出，保留“外面还有内容”的提示，
+   * 同时避免被矩形视口硬裁切。
+   */
+  .tag-cloud-fade {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 100% 100% at center,
+      transparent 62%,
+      color-mix(in srgb, var(--color-background) 42%, transparent) 82%,
+      color-mix(in srgb, var(--color-background) 88%, transparent) 100%
+    );
+    opacity: 0;
+    transition: opacity 0.18s ease;
+  }
+
+  .tag-cloud[data-zoomed="true"] .tag-cloud-fade {
+    opacity: 1;
   }
 
   @media (max-width: 640px), (hover: none) {
     .tag-cloud-link {
       font-size: min(var(--tag-size, 1.5rem), 1.5rem);
     }
-
-    .tag-cloud-hint {
-      display: none;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .tag-cloud[data-ready="true"] .tag-cloud-stage,
+    .tag-cloud-fade,
     .tag-cloud-link,
     .tag-cloud-count,
     .tag-cloud-link::before {
@@ -305,7 +324,7 @@ const items = [...tags]
     const ringStep = Math.max(5, Math.min(rx, ry) / 70);
     const angleSteps = 72;
     const maxR = rx;
-    const maxTarget = 0.82;
+    const maxTarget = 0.9;
     const count = sizes.length;
     let minR = 0;
 
@@ -353,6 +372,36 @@ const items = [...tags]
       minR = foundR + ringStep * 0.9;
     }
 
+    /*
+     * 整体重心校准：螺旋的第一个可放角度可能让词团略偏一侧，
+     * 这里把词团的外接盒平移到容器中心，让云朵更均匀地铺满区域。
+     * 平移不改变相对关系，也不会引入新的碰撞。
+     */
+    const minX = Math.min(...positions.map((p, i) => p.x - sizes[i].w / 2));
+    const maxX = Math.max(...positions.map((p, i) => p.x + sizes[i].w / 2));
+    const minY = Math.min(...positions.map((p, i) => p.y - sizes[i].h / 2));
+    const maxY = Math.max(...positions.map((p, i) => p.y + sizes[i].h / 2));
+    const dx = cx - (minX + maxX) / 2;
+    const dy = cy - (minY + maxY) / 2;
+
+    for (let factor = 1; factor >= 0.05; factor *= 0.5) {
+      const shifted = positions.map(p => ({
+        x: p.x + dx * factor,
+        y: p.y + dy * factor,
+      }));
+      const allInside = shifted.every((p, i) =>
+        containsInEllipse(
+          { x: p.x, y: p.y, w: sizes[i].w, h: sizes[i].h },
+          cx,
+          cy,
+          rx,
+          ry
+        )
+      );
+
+      if (allInside) return shifted;
+    }
+
     return positions;
   };
 
@@ -381,12 +430,14 @@ const items = [...tags]
 
     const resetZoom = () => {
       zoom = 1;
+      container.dataset.zoomed = "false";
       stage.style.transform = "";
       stage.style.transformOrigin = "center";
     };
 
     const setZoom = (next: number, originX: number, originY: number) => {
       zoom = clamp(next, MIN_SCALE, MAX_SCALE);
+      container.dataset.zoomed = zoom === 1 ? "false" : "true";
       stage.style.transformOrigin = `${originX}px ${originY}px`;
       stage.style.transform = zoom === 1 ? "" : `scale(${zoom})`;
     };
@@ -402,15 +453,17 @@ const items = [...tags]
       }
 
       const width = Math.round(container.clientWidth);
-      if (width <= 0) return;
+      const shell = container.parentElement;
+      if (width <= 0 || !shell) return;
 
-      const height = Math.round(clamp(window.innerHeight * 0.46, 300, 460));
+      const height = Math.round(shell.clientHeight);
+      if (height <= 0) return;
+
       const key = `${width}x${height}`;
       if (key === lastKey) return;
       lastKey = key;
 
       resetZoom();
-      container.style.setProperty("--cloud-height", `${height}px`);
 
       /*
        * 极端窄高视口或标签很多时，逐级缩小整体字号重试，
