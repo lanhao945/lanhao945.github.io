@@ -479,10 +479,9 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     );
 
     /*
-     * 详情弹窗的上下限制：以"当前视口"为界，保证整块详情不用滚动就能看全。
-     *   ① 顶部对齐放得下 → 顶部对齐；
-     *   ② 放不下但向上翻能放下 → 与项目底部对齐（向上展开）；
-     *   ③ 两边都放不下（视口很矮）→ 夹在视口内，并限制高度（内部可滚）。
+     * 详情弹窗定位：以"当前视口"为界，保证整块详情不用滚动就能看全。
+     *   ① 垂直：优先顶部对齐；放不下就向上翻；两边都放不下则夹在视口内并限制高度。
+     *   ② 水平：优先向卡片外侧展开；若那侧超出视口，再整体往中间挤到边界内。
      */
     const EDGE = 12;
     let active: HTMLElement | null = null;
@@ -494,6 +493,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
       pop.style.insetBlockStart = "";
       pop.style.maxBlockSize = "";
+      pop.style.translate = "";
 
       const box = active.getBoundingClientRect();
       const popHeight = pop.getBoundingClientRect().height;
@@ -501,21 +501,35 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 
       if (box.top + popHeight <= viewportH - EDGE) {
         active.dataset.align = "top";
-        return;
-      }
-
-      if (box.bottom - popHeight >= EDGE) {
+      } else if (box.bottom - popHeight >= EDGE) {
         active.dataset.align = "bottom";
-        return;
+      } else {
+        // 上下都放不下：夹在视口内，必要时内部滚动
+        active.dataset.align = "fit";
+        const maxHeight = viewportH - EDGE * 2;
+        pop.style.maxBlockSize = `${maxHeight}px`;
+        const height = Math.min(popHeight, maxHeight);
+        const top = Math.min(
+          Math.max(EDGE, box.top),
+          viewportH - EDGE - height
+        );
+        pop.style.insetBlockStart = `${Math.round(top - box.top)}px`;
       }
 
-      // 两边都放不下：夹在视口内，必要时内部滚动
-      active.dataset.align = "fit";
-      const maxHeight = viewportH - EDGE * 2;
-      pop.style.maxBlockSize = `${maxHeight}px`;
-      const height = Math.min(popHeight, maxHeight);
-      const top = Math.min(Math.max(EDGE, box.top), viewportH - EDGE - height);
-      pop.style.insetBlockStart = `${Math.round(top - box.top)}px`;
+      // 量一遍未偏移时的水平位置：越界多少就往中间挤多少
+      const rect = pop.getBoundingClientRect();
+      const viewportW = document.documentElement.clientWidth;
+      let shift = 0;
+      if (rect.left < EDGE) {
+        shift = EDGE - rect.left;
+      } else if (rect.right > viewportW - EDGE) {
+        shift = viewportW - EDGE - rect.right;
+      }
+      if (shift !== 0) {
+        // 向外取整，保证完整留出 EDGE 边距，避免亚像素被裁切
+        const rounded = shift > 0 ? Math.ceil(shift) : Math.floor(shift);
+        pop.style.translate = `${rounded}px 0`;
+      }
     };
 
     for (const item of items) {
