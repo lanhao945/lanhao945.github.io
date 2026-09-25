@@ -53,11 +53,7 @@ const homePath = getRelativeLocaleUrl(locale, "");
       flex-direction: column;
     }
 
-    /* 头部与页脚也压扁，把高度让给时间轴（属于子组件，需要整段 global） */
-    :global(body.home header > div) {
-      padding-block: 0.5rem;
-    }
-
+    /* 只压扁页脚，把高度让给时间轴；头部保持与其它页面一致 */
     :global(body.home footer > div) {
       padding-block: 0.5rem;
     }
