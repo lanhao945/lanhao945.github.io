@@ -311,9 +311,14 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     visibility: visible;
   }
 
-  /* 仅横屏（电脑）预览启用详情卡片，断点与首页时间轴保持一致 */
+  /*
+   * 仅横屏（电脑）预览启用详情卡片，断点与首页时间轴保持一致。
+   * 只在当前项被悬停 / 聚焦时参与布局：隐藏弹层若参与布局，
+   * 会向卡片外侧撑出视口，导致页面出现水平滚动条和空白区。
+   */
   @media (min-width: 900px) and (orientation: landscape) {
-    .pr-pop {
+    .pr-item:hover .pr-pop,
+    .pr-item:focus-within .pr-pop {
       display: block;
     }
   }
