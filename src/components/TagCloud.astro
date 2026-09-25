@@ -1,0 +1,231 @@
+---
+import { getRelativeLocaleUrl } from "astro:i18n";
+import IconHash from "@/assets/icons/IconHash.svg";
+import config from "@/config";
+
+type TagCloudItem = {
+  tag: string;
+  tagName: string;
+  count: number;
+};
+
+type Props = {
+  tags: TagCloudItem[];
+};
+
+const { tags } = Astro.props;
+const locale = Astro.currentLocale ?? config.site.lang;
+
+/** FNV-1a：给同数量标签一个稳定、自然的排布与层次 */
+const hashString = (value: string) => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+const counts = tags.map(item => item.count);
+const minCount = counts.length > 0 ? Math.min(...counts) : 0;
+const maxCount = counts.length > 0 ? Math.max(...counts) : 0;
+const allTied = tags.length < 2 || minCount === maxCount;
+const sqrtMin = Math.sqrt(minCount);
+const sqrtMax = Math.sqrt(maxCount);
+
+const normalizedCount = (count: number) =>
+  sqrtMax === sqrtMin
+    ? 0.5
+    : (Math.sqrt(count) - sqrtMin) / (sqrtMax - sqrtMin);
+
+const items = [...tags]
+  .sort((a, b) => b.count - a.count || hashString(a.tag) - hashString(b.tag))
+  .map(item => {
+    const hash = hashString(item.tag);
+    const tieBreak = (hash % 997) / 997;
+    const norm = normalizedCount(item.count);
+
+    /*
+     * 数量有差异时字号完全由数量决定；
+     * 数量全部相同时没有区分度，用稳定哈希做装饰性分级，
+     * 让词云仍有层次；后续数量拉开后会重新由数量主导。
+     */
+    const size = allTied ? 1.1 + tieBreak * 1.05 : 1.05 + norm * 1.45;
+    const tier = allTied
+      ? Math.min(3, Math.floor(tieBreak * 4))
+      : Math.round((1 - norm) * 3);
+    const shift = (((hash >>> 10) % 9) - 4) * 0.08;
+
+    return { ...item, size, tier, shift };
+  });
+---
+
+<ul class="tag-cloud">
+  {
+    items.map(({ tag, tagName, count, size, tier, shift }) => (
+      <li
+        class="tag-cloud-item"
+        data-tier={tier}
+        style={`--tag-size: ${size.toFixed(3)}rem; --tag-shift: ${shift.toFixed(3)}rem`}
+      >
+        <a
+          class="tag-cloud-link"
+          href={getRelativeLocaleUrl(locale, `tags/${tag}/`)}
+          title={`${tagName} (${count})`}
+        >
+          <IconHash class="tag-cloud-hash" aria-hidden="true" />
+          <span class="tag-cloud-name">{tagName}</span>
+          <span class="tag-cloud-count" aria-hidden="true">
+            {count}
+          </span>
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.55rem, 1.4vw, 1rem) clamp(0.85rem, 2vw, 1.5rem);
+    min-block-size: clamp(11rem, 28vh, 18rem);
+    max-inline-size: 40rem;
+    margin-block: 0;
+    margin-inline: auto;
+    padding-block: 1.5rem 2rem;
+    list-style: none;
+  }
+
+  .tag-cloud-item {
+    transform: translateY(var(--tag-shift, 0));
+    transition:
+      transform 0.25s ease,
+      opacity 0.25s ease,
+      filter 0.25s ease;
+  }
+
+  .tag-cloud-link {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.08em;
+    font-size: var(--tag-size, 1.5rem);
+    font-weight: 600;
+    line-height: 1.05;
+    white-space: nowrap;
+    color: var(--color-foreground);
+    text-decoration: none;
+    transition:
+      color 0.25s ease,
+      transform 0.25s ease;
+  }
+
+  .tag-cloud-hash {
+    flex: none;
+    inline-size: 0.78em;
+    block-size: 0.78em;
+    opacity: 0.5;
+  }
+
+  .tag-cloud-count {
+    font-size: 0.45em;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    opacity: 0;
+    transform: translateY(-0.4em);
+    transition:
+      opacity 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  /* 数量越多越靠 accent，越少越靠 muted */
+  .tag-cloud-item[data-tier="0"] .tag-cloud-link {
+    color: var(--color-accent);
+  }
+
+  .tag-cloud-item[data-tier="1"] .tag-cloud-link {
+    color: color-mix(in srgb, var(--color-accent) 68%, var(--color-foreground));
+  }
+
+  .tag-cloud-item[data-tier="2"] .tag-cloud-link {
+    color: var(--color-foreground);
+  }
+
+  .tag-cloud-item[data-tier="3"] .tag-cloud-link {
+    color: var(--color-muted-foreground);
+  }
+
+  /* 悬停 / 聚焦：点亮当前标签，其余淡出 */
+  .tag-cloud:has(.tag-cloud-item:hover) .tag-cloud-item,
+  .tag-cloud:has(.tag-cloud-item:focus-within) .tag-cloud-item {
+    opacity: 0.28;
+    filter: saturate(0.45);
+  }
+
+  .tag-cloud:has(.tag-cloud-item:hover) .tag-cloud-item:hover,
+  .tag-cloud:has(.tag-cloud-item:focus-within) .tag-cloud-item:focus-within {
+    opacity: 1;
+    filter: none;
+  }
+
+  .tag-cloud .tag-cloud-item:hover .tag-cloud-link,
+  .tag-cloud .tag-cloud-item:focus-within .tag-cloud-link {
+    color: var(--color-accent);
+    transform: scale(1.14);
+  }
+
+  .tag-cloud .tag-cloud-item:hover .tag-cloud-count,
+  .tag-cloud .tag-cloud-item:focus-within .tag-cloud-count {
+    opacity: 0.9;
+    transform: translateY(-0.55em);
+  }
+
+  /* 当前标签背后的高亮底色 */
+  .tag-cloud-link::before {
+    content: "";
+    position: absolute;
+    inset: -0.32em -0.45em;
+    z-index: -1;
+    border-radius: 0.45em;
+    background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+    opacity: 0;
+    transform: scale(0.82);
+    transition:
+      opacity 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .tag-cloud .tag-cloud-item:hover .tag-cloud-link::before,
+  .tag-cloud .tag-cloud-item:focus-within .tag-cloud-link::before {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @media (max-width: 640px) {
+    .tag-cloud {
+      min-block-size: 0;
+      padding-block: 1rem 1.5rem;
+    }
+
+    .tag-cloud-item {
+      transform: none;
+    }
+
+    .tag-cloud-link {
+      font-size: calc(var(--tag-size, 1.5rem) * 0.82);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tag-cloud-item,
+    .tag-cloud-link,
+    .tag-cloud-count,
+    .tag-cloud-link::before {
+      transition: none;
+    }
+  }
+</style>
