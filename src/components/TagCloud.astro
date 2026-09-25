@@ -7,6 +7,7 @@ type TagCloudItem = {
   tag: string;
   tagName: string;
   count: number;
+  latest: number;
 };
 
 type Props = {
@@ -16,95 +17,103 @@ type Props = {
 const { tags } = Astro.props;
 const locale = Astro.currentLocale ?? config.site.lang;
 
-/** FNV-1a：给同数量标签一个稳定、自然的排布与层次 */
-const hashString = (value: string) => {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-};
+const MAX_SIZE = 2.5;
+const MIN_SIZE = 0.75;
 
-const counts = tags.map(item => item.count);
-const minCount = counts.length > 0 ? Math.min(...counts) : 0;
-const maxCount = counts.length > 0 ? Math.max(...counts) : 0;
-const allTied = tags.length < 2 || minCount === maxCount;
-const sqrtMin = Math.sqrt(minCount);
-const sqrtMax = Math.sqrt(maxCount);
-
-const normalizedCount = (count: number) =>
-  sqrtMax === sqrtMin
-    ? 0.5
-    : (Math.sqrt(count) - sqrtMin) / (sqrtMax - sqrtMin);
-
+/*
+ * 排序：数量优先；数量相同看最近一次关联分享的更新时间；
+ * 数量与时间都相同则按标签 slug 稳定排序（顺序本身不影响语义）。
+ */
 const items = [...tags]
-  .sort((a, b) => b.count - a.count || hashString(a.tag) - hashString(b.tag))
-  .map(item => {
-    const hash = hashString(item.tag);
-    const tieBreak = (hash % 997) / 997;
-    const norm = normalizedCount(item.count);
-
-    /*
-     * 数量有差异时字号完全由数量决定；
-     * 数量全部相同时没有区分度，用稳定哈希做装饰性分级，
-     * 让词云仍有层次；后续数量拉开后会重新由数量主导。
-     */
-    const size = allTied ? 1.1 + tieBreak * 1.05 : 1.05 + norm * 1.45;
-    const tier = allTied
-      ? Math.min(3, Math.floor(tieBreak * 4))
-      : Math.round((1 - norm) * 3);
-    const shift = (((hash >>> 10) % 9) - 4) * 0.08;
-
-    return { ...item, size, tier, shift };
+  .sort(
+    (a, b) =>
+      b.count - a.count || b.latest - a.latest || a.tag.localeCompare(b.tag)
+  )
+  .map((item, rank, list) => {
+    const ratio = list.length <= 1 ? 0 : rank / (list.length - 1);
+    const size = MAX_SIZE - (MAX_SIZE - MIN_SIZE) * ratio;
+    const tier = Math.min(3, Math.floor(ratio * 4));
+    return { ...item, rank, size, tier };
   });
 ---
 
-<ul class="tag-cloud">
-  {
-    items.map(({ tag, tagName, count, size, tier, shift }) => (
-      <li
-        class="tag-cloud-item"
-        data-tier={tier}
-        style={`--tag-size: ${size.toFixed(3)}rem; --tag-shift: ${shift.toFixed(3)}rem`}
-      >
-        <a
-          class="tag-cloud-link"
-          href={getRelativeLocaleUrl(locale, `tags/${tag}/`)}
-          title={`${tagName} (${count})`}
-        >
-          <IconHash class="tag-cloud-hash" aria-hidden="true" />
-          <span class="tag-cloud-name">{tagName}</span>
-          <span class="tag-cloud-count" aria-hidden="true">
-            {count}
-          </span>
-        </a>
-      </li>
-    ))
-  }
-</ul>
+<div class="tag-cloud-shell">
+  <div class="tag-cloud" data-tag-cloud>
+    <ul class="tag-cloud-stage" data-tag-cloud-stage>
+      {
+        items.map(({ tag, tagName, count, size, tier, rank }) => (
+          <li
+            class="tag-cloud-item"
+            data-tag-item
+            data-rank={rank}
+            data-tier={tier}
+            style={`--tag-size: ${size.toFixed(3)}rem`}
+          >
+            <a
+              class="tag-cloud-link"
+              data-tag-link
+              href={getRelativeLocaleUrl(locale, `tags/${tag}/`)}
+              title={`${tagName} (${count})`}
+            >
+              <IconHash class="tag-cloud-hash" aria-hidden="true" />
+              <span class="tag-cloud-name">{tagName}</span>
+              <span class="tag-cloud-count" aria-hidden="true">
+                {count}
+              </span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+  <p class="tag-cloud-hint" aria-hidden="true">
+    滚轮缩放 · 双击空白复位 · 点击标签跳转
+  </p>
+</div>
 
 <style>
+  .tag-cloud-shell {
+    position: relative;
+  }
+
   .tag-cloud {
+    position: relative;
+    max-inline-size: 40rem;
+    margin-inline: auto;
+  }
+
+  /* 没有 JS / 窄屏时的流式回退：所有标签按顺序换行展示 */
+  .tag-cloud-stage {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: clamp(0.55rem, 1.4vw, 1rem) clamp(0.85rem, 2vw, 1.5rem);
-    min-block-size: clamp(11rem, 28vh, 18rem);
-    max-inline-size: 40rem;
-    margin-block: 0;
-    margin-inline: auto;
-    padding-block: 1.5rem 2rem;
+    gap: clamp(0.5rem, 1.2vw, 0.9rem) clamp(0.8rem, 1.8vw, 1.35rem);
+    margin: 0;
+    padding-block: 1.25rem;
     list-style: none;
   }
 
-  .tag-cloud-item {
-    transform: translateY(var(--tag-shift, 0));
-    transition:
-      transform 0.25s ease,
-      opacity 0.25s ease,
-      filter 0.25s ease;
+  /* 螺旋排布完成后：固定云朵视口，标签绝对定位 */
+  .tag-cloud[data-ready="true"] {
+    block-size: var(--cloud-height, clamp(19rem, 46vh, 29rem));
+    overflow: hidden;
+  }
+
+  .tag-cloud[data-ready="true"] .tag-cloud-stage {
+    position: absolute;
+    inset: 0;
+    display: block;
+    padding: 0;
+    cursor: zoom-in;
+    transform-origin: center;
+    transition: transform 0.12s ease-out;
+  }
+
+  .tag-cloud[data-ready="true"] .tag-cloud-item {
+    position: absolute;
+    margin: 0;
+    transform: translate(-50%, -50%);
   }
 
   .tag-cloud-link {
@@ -113,15 +122,15 @@ const items = [...tags]
     display: inline-flex;
     align-items: center;
     gap: 0.08em;
-    font-size: var(--tag-size, 1.5rem);
+    font-size: calc(var(--tag-size, 1.5rem) * var(--cloud-scale, 1));
     font-weight: 600;
     line-height: 1.05;
     white-space: nowrap;
     color: var(--color-foreground);
     text-decoration: none;
     transition:
-      color 0.25s ease,
-      transform 0.25s ease;
+      color 0.2s ease,
+      transform 0.2s ease;
   }
 
   .tag-cloud-hash {
@@ -132,7 +141,7 @@ const items = [...tags]
   }
 
   .tag-cloud-count {
-    font-size: 0.45em;
+    font-size: max(0.6rem, 0.45em);
     font-weight: 500;
     color: var(--color-muted-foreground);
     opacity: 0;
@@ -142,7 +151,7 @@ const items = [...tags]
       transform 0.2s ease;
   }
 
-  /* 数量越多越靠 accent，越少越靠 muted */
+  /* 排名越靠前越接近主题色，越靠后越淡 */
   .tag-cloud-item[data-tier="0"] .tag-cloud-link {
     color: var(--color-accent);
   }
@@ -205,23 +214,25 @@ const items = [...tags]
     transform: scale(1);
   }
 
-  @media (max-width: 640px) {
-    .tag-cloud {
-      min-block-size: 0;
-      padding-block: 1rem 1.5rem;
-    }
+  .tag-cloud-hint {
+    margin: 0.25rem 0 0;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--color-muted-foreground);
+  }
 
-    .tag-cloud-item {
-      transform: none;
-    }
-
+  @media (max-width: 640px), (hover: none) {
     .tag-cloud-link {
-      font-size: calc(var(--tag-size, 1.5rem) * 0.82);
+      font-size: min(var(--tag-size, 1.5rem), 1.5rem);
+    }
+
+    .tag-cloud-hint {
+      display: none;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .tag-cloud-item,
+    .tag-cloud[data-ready="true"] .tag-cloud-stage,
     .tag-cloud-link,
     .tag-cloud-count,
     .tag-cloud-link::before {
@@ -229,3 +240,250 @@ const items = [...tags]
     }
   }
 </style>
+
+<script>
+  const CLOUD_SELECTOR = "[data-tag-cloud]";
+  const MIN_SCALE = 0.5;
+  const MAX_SCALE = 4;
+
+  type CloudBox = {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  };
+
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, value));
+
+  /* 矩形四角都要落进椭圆内，保证所有标签都完整可见 */
+  const containsInEllipse = (
+    box: CloudBox,
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number
+  ) => {
+    const corners = [
+      [box.x - box.w / 2, box.y - box.h / 2],
+      [box.x + box.w / 2, box.y - box.h / 2],
+      [box.x - box.w / 2, box.y + box.h / 2],
+      [box.x + box.w / 2, box.y + box.h / 2],
+    ];
+
+    return corners.every(([x, y]) => {
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      return dx * dx + dy * dy <= 1;
+    });
+  };
+
+  const overlaps = (a: CloudBox, b: CloudBox, gap: number) =>
+    Math.abs(a.x - b.x) < (a.w + b.w) / 2 + gap &&
+    Math.abs(a.y - b.y) < (a.h + b.h) / 2 + gap;
+
+  /*
+   * 逐圈向外排布：按传入顺序（数量 + 最近更新排序）从中心向外寻找
+   * 最近可用位置，下一项只会在更外圈放置。于是越靠前的标签越居中、
+   * 越大；越靠后的越靠外、越小。
+   */
+  const packCloud = (
+    sizes: { w: number; h: number }[],
+    width: number,
+    height: number
+  ) => {
+    const cx = width / 2;
+    const cy = height / 2;
+    const rx = width / 2 - 6;
+    const ry = height / 2 - 6;
+
+    if (rx <= 0 || ry <= 0) return null;
+
+    const gap = 8;
+    const placed: CloudBox[] = [];
+    const positions: { x: number; y: number }[] = [];
+    const ringStep = Math.max(5, Math.min(rx, ry) / 70);
+    const angleSteps = 72;
+    const maxR = rx;
+    const maxTarget = 0.82;
+    const count = sizes.length;
+    let minR = 0;
+
+    for (let i = 0; i < sizes.length; i += 1) {
+      const { w, h } = sizes[i];
+      const angleOffset = (i * 2.399963229728653) % (Math.PI * 2);
+      let found: CloudBox | null = null;
+      let foundR = 0;
+
+      if (i === 0) {
+        const center: CloudBox = { x: cx, y: cy, w, h };
+        if (!containsInEllipse(center, cx, cy, rx, ry)) return null;
+        found = center;
+      } else {
+        /*
+         * 每项有一个随排名递增的目标半径，让靠后的标签真正走向四周；
+         * 若目标圈被占用，再向更外圈寻找，仍然保持外扩顺序。
+         */
+        const targetR = count <= 1 ? 0 : (i / (count - 1)) * maxTarget * maxR;
+        const searchStart = Math.max(minR, targetR - ringStep * 1.5);
+
+        for (let r = searchStart; r <= maxR && !found; r += ringStep) {
+          for (let k = 0; k < angleSteps; k += 1) {
+            const theta = angleOffset + (k * Math.PI * 2) / angleSteps;
+            const candidate: CloudBox = {
+              x: cx + Math.cos(theta) * r,
+              y: cy + Math.sin(theta) * r * (ry / rx),
+              w,
+              h,
+            };
+
+            if (!containsInEllipse(candidate, cx, cy, rx, ry)) continue;
+            if (placed.some(item => overlaps(item, candidate, gap))) continue;
+
+            found = candidate;
+            foundR = r;
+            break;
+          }
+        }
+      }
+
+      if (!found) return null;
+      placed.push(found);
+      positions.push({ x: found.x, y: found.y });
+      minR = foundR + ringStep * 0.9;
+    }
+
+    return positions;
+  };
+
+  function setupCloud(container: HTMLElement) {
+    const stage = container.querySelector<HTMLElement>(
+      "[data-tag-cloud-stage]"
+    );
+    const entries = [
+      ...container.querySelectorAll<HTMLElement>("[data-tag-item]"),
+    ]
+      .map(item => ({
+        item,
+        link: item.querySelector<HTMLElement>("[data-tag-link]"),
+      }))
+      .filter(
+        (entry): entry is { item: HTMLElement; link: HTMLElement } =>
+          entry.link !== null
+      );
+
+    if (!stage || entries.length === 0) return;
+
+    const narrow = window.matchMedia("(max-width: 640px)");
+    const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+    let zoom = 1;
+    let lastKey = "";
+
+    const resetZoom = () => {
+      zoom = 1;
+      stage.style.transform = "";
+      stage.style.transformOrigin = "center";
+    };
+
+    const setZoom = (next: number, originX: number, originY: number) => {
+      zoom = clamp(next, MIN_SCALE, MAX_SCALE);
+      stage.style.transformOrigin = `${originX}px ${originY}px`;
+      stage.style.transform = zoom === 1 ? "" : `scale(${zoom})`;
+    };
+
+    const layout = () => {
+      if (narrow.matches) {
+        if (container.dataset.ready !== "false") {
+          container.dataset.ready = "false";
+          container.style.removeProperty("--cloud-scale");
+          resetZoom();
+        }
+        return;
+      }
+
+      const width = Math.round(container.clientWidth);
+      if (width <= 0) return;
+
+      const height = Math.round(clamp(window.innerHeight * 0.46, 300, 460));
+      const key = `${width}x${height}`;
+      if (key === lastKey) return;
+      lastKey = key;
+
+      resetZoom();
+      container.style.setProperty("--cloud-height", `${height}px`);
+
+      /*
+       * 极端窄高视口或标签很多时，逐级缩小整体字号重试，
+       * 优先保证“全部标签都出现”，而不是让某个标签被裁掉。
+       */
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const scale = Math.max(0.45, 0.88 ** attempt);
+        container.style.setProperty("--cloud-scale", String(scale));
+
+        const sizes = entries.map(({ link }) => ({
+          w: link.offsetWidth,
+          h: link.offsetHeight,
+        }));
+        const positions = packCloud(sizes, width, height);
+
+        if (!positions) continue;
+
+        entries.forEach(({ item }, index) => {
+          item.style.left = `${positions[index].x.toFixed(2)}px`;
+          item.style.top = `${positions[index].y.toFixed(2)}px`;
+        });
+        container.dataset.ready = "true";
+        return;
+      }
+
+      // 极端情况下退回流式布局，保证标签仍然全部可见
+      container.dataset.ready = "false";
+      container.style.removeProperty("--cloud-scale");
+    };
+
+    let frame = 0;
+    const scheduleLayout = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(layout);
+    };
+
+    const observer = new ResizeObserver(scheduleLayout);
+    observer.observe(container);
+
+    container.addEventListener(
+      "wheel",
+      event => {
+        if (!finePointer.matches || event.ctrlKey) return;
+        event.preventDefault();
+
+        const rect = container.getBoundingClientRect();
+        const factor = Math.exp(-event.deltaY * 0.0015);
+        setZoom(
+          zoom * factor,
+          event.clientX - rect.left,
+          event.clientY - rect.top
+        );
+      },
+      { passive: false }
+    );
+
+    container.addEventListener("dblclick", event => {
+      if ((event.target as Element).closest("[data-tag-link]")) return;
+      resetZoom();
+    });
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => observer.disconnect(),
+      { once: true }
+    );
+
+    layout();
+  }
+
+  function setupAllTagClouds() {
+    document.querySelectorAll<HTMLElement>(CLOUD_SELECTOR).forEach(setupCloud);
+  }
+
+  document.addEventListener("astro:page-load", setupAllTagClouds);
+</script>
