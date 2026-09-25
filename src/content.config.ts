@@ -4,9 +4,15 @@ import { glob } from "astro/loaders";
 import config from "@/config";
 
 export const BLOG_PATH = "src/content/posts";
+export const TEST_POST_PATH = "test";
+
+const POST_PATTERNS = [
+  `${BLOG_PATH}/**/[^_]*.{md,mdx}`,
+  `${TEST_POST_PATH}/**/[^_]*.{md,mdx}`,
+];
 
 const posts = defineCollection({
-  loader: glob({ pattern: "**/[^_]*.{md,mdx}", base: `./${BLOG_PATH}` }),
+  loader: glob({ pattern: POST_PATTERNS, base: "." }),
   schema: ({ image }) =>
     z.object({
       author: z.string().default(config.site.author),
