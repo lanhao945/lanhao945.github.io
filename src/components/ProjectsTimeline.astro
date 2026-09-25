@@ -234,6 +234,15 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     color: var(--color-muted-foreground);
   }
 
+  /*
+   * 悬停 / 聚焦：把当前项抬到其它项目之上，避免详情弹层被后续卡片盖住。
+   * 项目卡片的入场动画会形成层叠上下文，只有抬高整项才能让弹层真正置顶。
+   */
+  .pr-item:hover,
+  .pr-item:focus-within {
+    z-index: 50;
+  }
+
   /* 悬停 / 聚焦：节点与轴线点亮 */
   .pr-item:hover::before,
   .pr-item:focus-within::before,
@@ -276,11 +285,6 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     background: var(--color-background);
     box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
     text-align: start;
-    opacity: 0;
-    visibility: hidden;
-    transition:
-      opacity 0.18s ease,
-      visibility 0.18s;
   }
 
   /* 节点在左 → 弹窗挂到整项左侧（页面留白区） */
@@ -303,12 +307,6 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
   .pr-item[data-align="fit"] .pr-pop {
     inset-block-start: auto;
     inset-block-end: auto;
-  }
-
-  .pr-item:hover .pr-pop,
-  .pr-item:focus-within .pr-pop {
-    opacity: 1;
-    visibility: visible;
   }
 
   /*
