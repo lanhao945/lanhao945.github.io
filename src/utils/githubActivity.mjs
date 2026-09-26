@@ -154,13 +154,13 @@ function sampleSegment(segment, dayCounts) {
   return points;
 }
 
-function pathFor(points, amplitude, baseline, xStart, xEnd) {
+function pathFor(points, amplitude, baseline, xStart, xEnd, direction) {
   const commands = [
     `M ${formatNumber(xStart)} ${formatNumber(baseline)}`,
     ...points.map(
       point =>
         `L ${formatNumber(point.x)} ${formatNumber(
-          baseline - point.intensity * amplitude
+          baseline + direction * point.intensity * amplitude
         )}`
     ),
     `L ${formatNumber(xEnd)} ${formatNumber(baseline)}`,
@@ -225,7 +225,8 @@ export function buildActivityField(dayCounts, anchorYears) {
         UPPER_AMPLITUDE,
         BASELINE,
         segment.xStart,
-        segment.xEnd
+        segment.xEnd,
+        -1
       )
     )
     .join(" ");
@@ -237,7 +238,8 @@ export function buildActivityField(dayCounts, anchorYears) {
         UPPER_AMPLITUDE * LOWER_RATIO,
         BASELINE,
         segment.xStart,
-        segment.xEnd
+        segment.xEnd,
+        1
       )
     )
     .join(" ");
@@ -252,4 +254,18 @@ export function buildActivityField(dayCounts, anchorYears) {
     hasData,
     segments,
   };
+}
+export function computeActivityViewBox(viewBox, axisRatio) {
+  const [minX, minY, width, height] = String(viewBox)
+    .trim()
+    .split(/\s+/)
+    .map(Number);
+  if (![minX, minY, width, height].every(Number.isFinite)) {
+    throw new TypeError(`Invalid SVG viewBox: ${viewBox}`);
+  }
+  const clampedRatio = Math.min(0.9, Math.max(0.1, Number(axisRatio)));
+  const offset = (0.5 - clampedRatio) * height;
+  return `${formatNumber(minX)} ${formatNumber(minY + offset)} ${formatNumber(
+    width
+  )} ${formatNumber(height)}`;
 }

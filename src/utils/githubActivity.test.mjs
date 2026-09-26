@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildActivityField,
   buildActivitySegments,
+  computeActivityViewBox,
 } from "./githubActivity.mjs";
 
 test("maps anchored years to equal columns and missing years to the gap", () => {
@@ -70,6 +71,8 @@ test("builds asymmetric finite SVG fields with the stronger value above the axis
   assert.equal(field.hasData, true);
   assert.match(field.upperPath, /^M /);
   assert.match(field.lowerPath, /^M /);
+  assert.doesNotMatch(field.upperPath, /NaN/);
+  assert.doesNotMatch(field.lowerPath, /NaN/);
   assert.ok(field.upperPath.split("M ").length - 1 >= 2);
   assert.ok(field.lowerPath.split("M ").length - 1 >= 2);
 
@@ -78,6 +81,15 @@ test("builds asymmetric finite SVG fields with the stronger value above the axis
   assert.ok(upperMax > 0);
   assert.ok(lowerMax > 0);
   assert.ok(lowerMax <= upperMax * 0.4);
+
+  const upperY = [...field.upperPath.matchAll(/[ML] [\d.]+ ([\d.]+)/g)].map(
+    match => Number(match[1])
+  );
+  const lowerY = [...field.lowerPath.matchAll(/[ML] [\d.]+ ([\d.]+)/g)].map(
+    match => Number(match[1])
+  );
+  assert.ok(upperY.every(value => value <= field.baseline));
+  assert.ok(lowerY.every(value => value >= field.baseline));
 
   const numericTokens = [field.upperPath, field.lowerPath]
     .join(" ")
@@ -110,4 +122,10 @@ test("returns an empty field when no contribution days exist", () => {
   assert.equal(field.hasData, false);
   assert.equal(field.upperPath, "");
   assert.equal(field.lowerPath, "");
+});
+
+test("shifts the activity baseline to the measured timeline axis", () => {
+  assert.equal(computeActivityViewBox("0 0 870 200", 0.5), "0 0 870 200");
+  assert.equal(computeActivityViewBox("0 0 870 200", 0.534), "0 -6.8 870 200");
+  assert.equal(computeActivityViewBox("0 0 870 200", 0.99), "0 -80 870 200");
 });

@@ -1,6 +1,8 @@
 ---
 import type { TimelineColumn } from "@/utils/getSortedTimeline";
 import TimelineItem from "./TimelineItem.astro";
+import githubActivity from "@/data/github-activity.json";
+import { buildActivityField } from "@/utils/githubActivity.mjs";
 import { useTranslations } from "@/i18n";
 
 type Props = {
@@ -16,6 +18,10 @@ const total = columns.reduce(
   0
 );
 const scrollable = columns.length > 1;
+const activityField = buildActivityField(
+  githubActivity.days,
+  columns.map(column => column.year)
+);
 ---
 
 <section class="timeline" data-timeline aria-label={t.timeline.title}>
@@ -32,6 +38,56 @@ const scrollable = columns.length > 1;
           tabindex={scrollable ? 0 : -1}
         >
           <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
+            {activityField.hasData && (
+              <li class="timeline-activity" aria-hidden="true">
+                <svg
+                  class="timeline-activity-svg"
+                  viewBox={activityField.viewBox}
+                  data-base-view-box={activityField.viewBox}
+                  preserveAspectRatio="none"
+                >
+                  <defs>
+                    <linearGradient
+                      id="tl-activity-upper-gradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop class="timeline-activity-stop-faint" offset="0%" />
+                      <stop
+                        class="timeline-activity-stop-upper"
+                        offset="100%"
+                      />
+                    </linearGradient>
+                    <linearGradient
+                      id="tl-activity-lower-gradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop class="timeline-activity-stop-lower" offset="0%" />
+                      <stop
+                        class="timeline-activity-stop-faint"
+                        offset="100%"
+                      />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    class="timeline-activity-upper"
+                    fill="url(#tl-activity-upper-gradient)"
+                    d={activityField.upperPath}
+                  />
+                  <path
+                    class="timeline-activity-lower"
+                    fill="url(#tl-activity-lower-gradient)"
+                    d={activityField.lowerPath}
+                  />
+                </svg>
+              </li>
+            )}
+
             {/* 纯装饰：沿轴线缓慢流动的光带（横屏生效） */}
             <li class="timeline-flow" aria-hidden="true" />
             {columns.map((column, index) => (
@@ -81,7 +137,8 @@ const scrollable = columns.length > 1;
     --tl-flow-color: color-mix(in srgb, var(--color-accent) 60%, #fff);
   }
 
-  /* 光带只在横屏出现（竖屏的轴线是分段的，另做设计） */
+  /* 活动场与光带只在横屏出现；竖屏不展示 GitHub 活动。 */
+  .timeline-activity,
   .timeline-flow {
     display: none;
   }
@@ -257,8 +314,71 @@ const scrollable = columns.length > 1;
 
     /* 轨道 = 上卡片 | 轴线 | 下卡片 三行网格，轴线天然是直的 */
     /* 轴线上的流动光带：跟着轴线那一行居中 */
+    .timeline-track {
+      position: relative;
+      isolation: isolate;
+    }
+
+    .timeline-activity {
+      position: absolute;
+      z-index: 0;
+      inset: 0;
+      display: block;
+      overflow: hidden;
+      pointer-events: none;
+      mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        #000 14%,
+        #000 86%,
+        transparent 100%
+      );
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        transparent 0%,
+        #000 14%,
+        #000 86%,
+        transparent 100%
+      );
+    }
+
+    .timeline-activity-svg {
+      display: block;
+      inline-size: 100%;
+      block-size: 100%;
+      opacity: 0.92;
+    }
+
+    :global([data-theme="dark"]) .timeline-activity-svg {
+      opacity: 0.78;
+    }
+
+    .timeline-activity-stop-faint {
+      stop-color: var(--color-accent);
+      stop-opacity: 0;
+    }
+
+    .timeline-activity-stop-upper {
+      stop-color: var(--color-accent);
+      stop-opacity: 0.34;
+    }
+
+    .timeline-activity-stop-lower {
+      stop-color: var(--color-accent);
+      stop-opacity: 0.18;
+    }
+
+    :global([data-theme="dark"]) .timeline-activity-stop-upper {
+      stop-opacity: 0.24;
+    }
+
+    :global([data-theme="dark"]) .timeline-activity-stop-lower {
+      stop-opacity: 0.15;
+    }
+
     .timeline-flow {
       display: block;
+      z-index: 2;
       grid-row: 2;
       grid-column: 1 / -1;
       align-self: center;
@@ -377,6 +497,13 @@ const scrollable = columns.length > 1;
       display: contents;
     }
 
+    /* 内容层始终在活动场之上。 */
+    .timeline-events,
+    .timeline-year-label {
+      position: relative;
+      z-index: 1;
+    }
+
     .timeline-events[data-side="top"] {
       grid-column: var(--tl-col);
       grid-row: 1;
@@ -457,6 +584,8 @@ const scrollable = columns.length > 1;
 </style>
 
 <script>
+  import { computeActivityViewBox } from "@/utils/githubActivity.mjs";
+
   const HORIZONTAL_QUERY = "(min-width: 900px) and (orientation: landscape)";
   const horizontal = window.matchMedia(HORIZONTAL_QUERY);
 
@@ -553,6 +682,29 @@ const scrollable = columns.length > 1;
         } else {
           year.removeAttribute("data-current");
         }
+      }
+
+      // 活动场的 SVG 基线跟随真实轴线，而不是假设轨道永远上下等高。
+      const activitySvg = timeline.querySelector<SVGSVGElement>(
+        ".timeline-activity-svg"
+      );
+      const axisDot = timeline.querySelector<HTMLElement>(".timeline-year-dot");
+      const baseViewBox = activitySvg?.dataset.baseViewBox;
+      if (
+        activitySvg &&
+        axisDot &&
+        track &&
+        baseViewBox &&
+        track.clientHeight > 0
+      ) {
+        const trackBox = track.getBoundingClientRect();
+        const axisBox = axisDot.getBoundingClientRect();
+        const axisRatio =
+          (axisBox.top + axisBox.height / 2 - trackBox.top) / trackBox.height;
+        activitySvg.setAttribute(
+          "viewBox",
+          computeActivityViewBox(baseViewBox, axisRatio)
+        );
       }
     };
 
