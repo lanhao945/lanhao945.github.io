@@ -61,9 +61,22 @@ const saveArchiveState = () => {
 
   const anchor = getAnchor(root);
 
+  /*
+   * Do not persist the transient enter animation. If the user leaves while a
+   * batch is still fading in, restoring that class would make the same item
+   * animate again during the view transition and look like a flash.
+   */
+  const snapshot = root.cloneNode(true) as HTMLElement;
+  snapshot
+    .querySelectorAll<HTMLElement>(".archive-post-enter")
+    .forEach(item => {
+      item.classList.remove("archive-post-enter");
+      item.style.removeProperty("--archive-enter-delay");
+    });
+
   writeCache({
     version: root.dataset.archiveVersion,
-    html: root.innerHTML,
+    html: snapshot.innerHTML,
     next: Number(root.dataset.archiveNext || 0),
     scrollY: window.scrollY,
     anchorKey: anchor.key,

@@ -565,9 +565,32 @@ const yearGroups = Object.entries(
       }
     };
 
+    const clearEnterAnimations = () => {
+      root
+        .querySelectorAll<HTMLElement>(".archive-post-enter")
+        .forEach(item => {
+          item.classList.remove("archive-post-enter");
+          item.style.removeProperty("--archive-enter-delay");
+        });
+    };
+
+    const handlePostActivation = (event: Event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".archive-post-link")
+      ) {
+        clearEnterAnimations();
+      }
+    };
+
+    root.addEventListener("pointerdown", handlePostActivation, true);
+    root.addEventListener("click", handlePostActivation, true);
+
     const cleanup = () => {
       observer?.disconnect();
       window.removeEventListener("scroll", onScroll);
+      root.removeEventListener("pointerdown", handlePostActivation, true);
+      root.removeEventListener("click", handlePostActivation, true);
     };
 
     const loadNext = async () => {
