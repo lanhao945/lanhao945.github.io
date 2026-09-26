@@ -10,14 +10,23 @@ type Props = {
   canonicalURL?: string;
   pubDatetime?: Date;
   modDatetime?: Date | null;
+  transitionName?: string;
 };
 
 const { site } = config;
 
-const { title, description, ogImage, canonicalURL, pubDatetime, modDatetime } =
-  Astro.props;
+const {
+  title,
+  description,
+  ogImage,
+  canonicalURL,
+  pubDatetime,
+  modDatetime,
+  transitionName: providedTransitionName,
+} = Astro.props;
 
-const transitionName = title ? toTransitionName(title) : null;
+const transitionName =
+  providedTransitionName ?? (title ? toTransitionName(title) : null);
 const titleTransitionCss = transitionName
   ? `
       ::view-transition-group(${transitionName}) {
