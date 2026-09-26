@@ -1,3 +1,4 @@
+import { POST_TITLE_TRANSITION_NAME } from "./postTitleTransition";
 import { toTransitionName } from "./toTransitionName";
 
 export const getTagTransitionName = (tag: string) =>
@@ -15,6 +16,10 @@ export const getTagTransitionCss = (tags: string[]) => {
       animation: none !important;
       opacity: 0 !important;
       mix-blend-mode: normal;
+    }
+
+    ::view-transition-old(${POST_TITLE_TRANSITION_NAME}) {
+      display: none !important;
     }
   `;
 

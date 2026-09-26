@@ -4,6 +4,7 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 import { resolveDefaultOgImagePath } from "@/utils/resolveDefaultOgImagePath";
 import { getAssetPath } from "@/utils/withBase";
 import config from "@/config";
+import { getPostTitleTransitionCss } from "@/utils/postTitleTransition";
 import "@/styles/global.css";
 
 type Props = {
@@ -78,6 +79,9 @@ const rssHref = getRelativeLocaleUrl(
     <!-- Filled at runtime by theme.ts to match the current background colour -->
     <meta name="theme-color" content="" />
 
+    <!-- 分享标题在列表/归档页与详情页之间变形：两个方向都要有同一套规则 -->
+    <style is:global set:html={getPostTitleTransitionCss()}></style>
+
     <!-- Extra head content injected by child layouts (e.g. JSON-LD, article meta) -->
     <slot name="head" />
 
@@ -121,6 +125,7 @@ const rssHref = getRelativeLocaleUrl(
       import "@/scripts/theme";
       import "@/scripts/archiveState";
       import "@/scripts/tagCloudState";
+      import "@/scripts/postTitleMorph";
     </script>
   </body>
 </html>
