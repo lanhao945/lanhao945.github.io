@@ -180,6 +180,8 @@ const yearGroups = Object.entries(
 
       <div class="archive-sentinel" data-archive-sentinel aria-hidden="true">
       </div>
+
+      <div class="archive-loader" data-archive-loader aria-hidden="true"></div>
     </div>
   </Main>
 
@@ -212,6 +214,61 @@ const yearGroups = Object.entries(
 
   .archive-sentinel {
     block-size: 1px;
+  }
+
+  .archive-loader {
+    position: fixed;
+    inset-inline: 0;
+    top: 0;
+    z-index: 60;
+    block-size: 3px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .archive-loader::before {
+    content: "";
+    display: block;
+    block-size: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-accent),
+      transparent
+    );
+    transform: translateX(-100%);
+  }
+
+  .archive-timeline[data-archive-loading="true"] .archive-loader {
+    opacity: 1;
+  }
+
+  .archive-timeline[data-archive-loading="true"] .archive-loader::before {
+    animation: archive-loader-slide 0.85s linear infinite;
+  }
+
+  @keyframes archive-loader-slide {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  :global(.archive-post-enter) {
+    animation: archive-post-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--archive-enter-delay, 0ms);
+  }
+
+  @keyframes archive-post-enter {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .archive-year {
@@ -371,8 +428,10 @@ const yearGroups = Object.entries(
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :global(.archive-post-title) {
+    :global(.archive-post-title),
+    :global(.archive-post-enter) {
       transition: none;
+      animation: none;
     }
   }
 </style>
@@ -403,10 +462,22 @@ const yearGroups = Object.entries(
       day: "2-digit",
     }).format(new Date(post.publishedAt));
 
-  const createArchivePost = (post: ArchivePostPayload) => {
+  const createArchivePost = (post: ArchivePostPayload, index = 0) => {
     const item = document.createElement("li");
-    item.className = "archive-post";
+    item.className = "archive-post archive-post-enter";
     item.dataset.archiveKey = post.key;
+    item.style.setProperty(
+      "--archive-enter-delay",
+      `${Math.min(index, 7) * 45}ms`
+    );
+    item.addEventListener(
+      "animationend",
+      () => {
+        item.classList.remove("archive-post-enter");
+        item.style.removeProperty("--archive-enter-delay");
+      },
+      { once: true }
+    );
 
     const link = document.createElement("a");
     link.className = "archive-post-link";
@@ -448,6 +519,7 @@ const yearGroups = Object.entries(
 
     let loading = false;
     let observer: IntersectionObserver | null = null;
+    const MIN_LOADING_MS = 320;
 
     const nearSentinel = () =>
       sentinel.getBoundingClientRect().top <= window.innerHeight + 400;
@@ -481,9 +553,9 @@ const yearGroups = Object.entries(
         if (!list) continue;
 
         const fragment = document.createDocumentFragment();
-        for (const post of group.items) {
-          fragment.append(createArchivePost(post));
-        }
+        group.items.forEach((post, index) => {
+          fragment.append(createArchivePost(post, index));
+        });
         list.append(fragment);
 
         const month = list.closest("[data-archive-month]");
@@ -501,6 +573,8 @@ const yearGroups = Object.entries(
     const loadNext = async () => {
       if (loading || !next) return;
       loading = true;
+      const startedAt = performance.now();
+      root.dataset.archiveLoading = "true";
 
       try {
         const response = await fetch(`${endpoint}/${next}.json`, {
@@ -517,9 +591,15 @@ const yearGroups = Object.entries(
         root.dataset.archiveNext = next ? String(next) : "";
       } catch {
         // Keep `next` unchanged so the next scroll/intersection can retry.
-      } finally {
-        loading = false;
       }
+
+      const remaining = MIN_LOADING_MS - (performance.now() - startedAt);
+      if (remaining > 0) {
+        await new Promise(resolve => window.setTimeout(resolve, remaining));
+      }
+
+      root.dataset.archiveLoading = "false";
+      loading = false;
 
       if (!next) {
         cleanup();
