@@ -8,8 +8,16 @@ export const getTagTransitionName = (tag: string) =>
  * hide the old snapshot and let the target snapshot animate to the new
  * position and size. This keeps the direction consistent in both ways.
  */
-export const getTagTransitionCss = (tags: string[]) =>
-  tags
+export const getTagTransitionCss = (tags: string[]) => {
+  const rootCss = `
+    ::view-transition-old(root) {
+      animation: none !important;
+      opacity: 0 !important;
+      mix-blend-mode: normal;
+    }
+  `;
+
+  const tagCss = tags
     .map(tag => {
       const name = getTagTransitionName(tag);
 
@@ -32,3 +40,6 @@ export const getTagTransitionCss = (tags: string[]) =>
     `;
     })
     .join("\n");
+
+  return rootCss + tagCss;
+};
