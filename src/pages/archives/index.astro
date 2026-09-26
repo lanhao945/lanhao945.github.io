@@ -61,7 +61,7 @@ const yearGroups = Object.entries(
   getPostsByGroupCondition(posts, post => post.data.pubDatetime.getFullYear())
 )
   .sort(([yearA], [yearB]) => Number(yearB) - Number(yearA))
-  .map(([year, yearPosts], yearIndex) => {
+  .map(([year, yearPosts]) => {
     const months = Object.entries(
       getPostsByGroupCondition(
         yearPosts,
@@ -69,20 +69,18 @@ const yearGroups = Object.entries(
       )
     )
       .sort(([monthA], [monthB]) => Number(monthB) - Number(monthA))
-      .map(([month, monthPosts], monthIndex) => ({
+      .map(([month, monthPosts]) => ({
         month: Number(month),
         count: monthPosts.length,
         posts: [...monthPosts].sort(
           (a, b) => b.data.pubDatetime.getTime() - a.data.pubDatetime.getTime()
         ),
-        delay: yearIndex * 80 + monthIndex * 60,
       }));
 
     return {
       year: Number(year),
       count: yearPosts.length,
       months,
-      delay: yearIndex * 80,
     };
   });
 ---
@@ -106,76 +104,59 @@ const yearGroups = Object.entries(
       data-archive-version={archiveVersion}
     >
       {
-        yearGroups.map(({ year, count, months, delay }) => (
-          <section
-            class="archive-year"
-            data-archive-year
-            style={`--archive-delay: ${delay}ms`}
-          >
+        yearGroups.map(({ year, count, months }) => (
+          <section class="archive-year" data-archive-year>
             <h2 class="archive-year-label">
               <span>{year}</span>
               <sup>{count}</sup>
             </h2>
 
-            {months.map(
-              ({
-                month,
-                count: monthCount,
-                posts: monthPosts,
-                delay: monthDelay,
-              }) => (
-                <div
-                  class="archive-month"
-                  data-archive-month
-                  style={`--archive-delay: ${monthDelay}ms`}
-                >
-                  <div class="archive-month-label">
-                    <time
-                      datetime={`${year}-${String(month).padStart(2, "0")}`}
-                    >
-                      {monthFormatter.format(new Date(2000, month - 1, 1))}
-                    </time>
-                    <sup>{monthCount}</sup>
-                  </div>
-
-                  <ul
-                    class="archive-posts"
-                    data-archive-month-list
-                    data-year={year}
-                    data-month={month}
-                  >
-                    {monthPosts.map(post => (
-                      <li class="archive-post" data-archive-key={post.id}>
-                        <a
-                          class="archive-post-link"
-                          href={getPostUrl(post.id, post.filePath, locale)}
-                        >
-                          <h3
-                            class="archive-post-title"
-                            transition:name={toTransitionName(post.data.title)}
-                          >
-                            {post.data.title}
-                          </h3>
-                        </a>
-
-                        <div class="archive-post-date">
-                          <time datetime={post.data.pubDatetime.toISOString()}>
-                            {formatDate(
-                              post.data.pubDatetime,
-                              post.data.timezone
-                            )}
-                          </time>
-                        </div>
-
-                        <p class="archive-post-description">
-                          {post.data.description}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+            {months.map(({ month, count: monthCount, posts: monthPosts }) => (
+              <div class="archive-month" data-archive-month>
+                <div class="archive-month-label">
+                  <time datetime={`${year}-${String(month).padStart(2, "0")}`}>
+                    {monthFormatter.format(new Date(2000, month - 1, 1))}
+                  </time>
+                  <sup>{monthCount}</sup>
                 </div>
-              )
-            )}
+
+                <ul
+                  class="archive-posts"
+                  data-archive-month-list
+                  data-year={year}
+                  data-month={month}
+                >
+                  {monthPosts.map(post => (
+                    <li class="archive-post" data-archive-key={post.id}>
+                      <a
+                        class="archive-post-link"
+                        href={getPostUrl(post.id, post.filePath, locale)}
+                      >
+                        <h3
+                          class="archive-post-title"
+                          transition:name={toTransitionName(post.data.title)}
+                        >
+                          {post.data.title}
+                        </h3>
+                      </a>
+
+                      <div class="archive-post-date">
+                        <time datetime={post.data.pubDatetime.toISOString()}>
+                          {formatDate(
+                            post.data.pubDatetime,
+                            post.data.timezone
+                          )}
+                        </time>
+                      </div>
+
+                      <p class="archive-post-description">
+                        {post.data.description}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </section>
         ))
       }
@@ -324,26 +305,6 @@ const yearGroups = Object.entries(
     color: var(--color-muted-foreground);
   }
 
-  @media (prefers-reduced-motion: no-preference) {
-    .archive-year,
-    .archive-month {
-      animation: archive-enter 0.5s ease-out both;
-      animation-delay: var(--archive-delay, 0ms);
-    }
-  }
-
-  @keyframes archive-enter {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-  }
-
-  .archive-timeline[data-archive-restored="true"] .archive-year,
-  .archive-timeline[data-archive-restored="true"] .archive-month {
-    animation: none;
-  }
-
   @media (max-width: 640px) {
     .archive-timeline {
       padding-inline-start: 1.5rem;
@@ -381,11 +342,6 @@ const yearGroups = Object.entries(
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .archive-year,
-    .archive-month {
-      animation: none;
-    }
-
     :global(.archive-post-title) {
       transition: none;
     }

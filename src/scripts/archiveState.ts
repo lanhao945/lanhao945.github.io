@@ -82,7 +82,6 @@ const restoreArchiveDocument = (
   }
 
   root.innerHTML = cache.html;
-  root.dataset.archiveRestored = "true";
   return true;
 };
 
@@ -164,6 +163,14 @@ const initArchiveState = () => {
     const incomingDocument = (event as Event & { newDocument?: Document })
       .newDocument;
     if (!incomingDocument) return;
+
+    /*
+     * Only restore the cached archive when coming back from a post detail.
+     * Entering from nav/home should behave like a fresh archive visit and run
+     * the staggered entrance animation.
+     */
+    const fromPostDetail = /\/posts\//.test(window.location.pathname);
+    if (!fromPostDetail) return;
 
     const cache = readCache();
     if (!cache) return;
