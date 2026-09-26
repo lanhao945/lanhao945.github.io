@@ -1,6 +1,7 @@
 ---
 import Layout from "./Layout.astro";
 import config from "@/config";
+import { toTransitionName } from "@/utils/toTransitionName";
 
 type Props = {
   title?: string;
@@ -15,6 +16,26 @@ const { site } = config;
 
 const { title, description, ogImage, canonicalURL, pubDatetime, modDatetime } =
   Astro.props;
+
+const transitionName = title ? toTransitionName(title) : null;
+const titleTransitionCss = transitionName
+  ? `
+      ::view-transition-group(${transitionName}) {
+        animation-duration: 260ms;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      ::view-transition-old(${transitionName}) {
+        animation: none !important;
+        opacity: 0 !important;
+        mix-blend-mode: normal;
+      }
+      ::view-transition-new(${transitionName}) {
+        animation: none !important;
+        opacity: 1 !important;
+        mix-blend-mode: normal;
+      }
+    `
+  : "";
 
 const structuredData = {
   "@context": "https://schema.org",
@@ -54,6 +75,8 @@ const structuredData = {
         />
       )
     }
+
+    {titleTransitionCss && <style is:global set:html={titleTransitionCss} />}
 
     <script
       type="application/ld+json"

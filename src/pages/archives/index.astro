@@ -32,6 +32,29 @@ const archiveDataBase = getRelativeLocaleUrl(locale, "archives/data").replace(
 const posts = await getArchivePosts();
 const initialCount = Math.min(ARCHIVE_INITIAL_ITEMS, posts.length);
 const hasMore = posts.length > initialCount;
+const titleTransitionNames = [
+  ...new Set(posts.map(post => toTransitionName(post.data.title))),
+];
+const titleTransitionCss = titleTransitionNames
+  .map(
+    name => `
+      ::view-transition-group(${name}) {
+        animation-duration: 260ms;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      ::view-transition-old(${name}) {
+        animation: none !important;
+        opacity: 0 !important;
+        mix-blend-mode: normal;
+      }
+      ::view-transition-new(${name}) {
+        animation: none !important;
+        opacity: 1 !important;
+        mix-blend-mode: normal;
+      }
+    `
+  )
+  .join("\n");
 const archiveVersion = `${posts.length}-${posts[0]?.id ?? "empty"}-${posts.at(-1)?.id ?? "empty"}`;
 
 const formatDate = (date: Date, timezone?: string) =>
@@ -82,6 +105,9 @@ const yearGroups = Object.entries(
 ---
 
 <Layout title={`${t.pages.archivesTitle} | ${config.site.title}`}>
+  <Fragment slot="head">
+    <style is:global set:html={titleTransitionCss}></style>
+  </Fragment>
   <Header />
 
   <Main
