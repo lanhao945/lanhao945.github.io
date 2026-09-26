@@ -24,6 +24,8 @@ const MIN_SIZE = 0.75;
  * 排序：数量优先；数量相同看最近一次关联分享的更新时间；
  * 数量与时间都相同则按标签 slug 稳定排序（顺序本身不影响语义）。
  */
+const cloudVersion = `${tags.length}-${tags[0]?.tag ?? "empty"}-${tags.at(-1)?.tag ?? "empty"}`;
+
 const items = [...tags]
   .sort(
     (a, b) =>
@@ -42,7 +44,12 @@ const items = [...tags]
 </script>
 
 <div class="tag-cloud-shell">
-  <div class="tag-cloud" data-tag-cloud data-ready="pending">
+  <div
+    class="tag-cloud"
+    data-tag-cloud
+    data-tag-cloud-version={cloudVersion}
+    data-ready="pending"
+  >
     <ul class="tag-cloud-stage" data-tag-cloud-stage>
       {
         items.map(({ tag, tagName, count, size, tier, rank }) => (
@@ -413,7 +420,7 @@ const items = [...tags]
     const more = shell?.querySelector<HTMLElement>("[data-tag-more]");
     const moreList = shell?.querySelector<HTMLElement>("[data-tag-more-list]");
     const entries = [
-      ...container.querySelectorAll<HTMLElement>("[data-tag-item]"),
+      ...(shell ?? container).querySelectorAll<HTMLElement>("[data-tag-item]"),
     ]
       .map(item => ({
         item,
@@ -429,7 +436,7 @@ const items = [...tags]
     container.dataset.cloudReady = "true";
 
     const orientation = window.matchMedia("(orientation: landscape)");
-    let lastKey = "";
+    let lastKey = container.dataset.cloudRestoredKey ?? "";
 
     const moveAllToStage = () => {
       entries.forEach(({ item }) => stage.appendChild(item));
