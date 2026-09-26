@@ -10,6 +10,7 @@ import Pagination from "@/components/Pagination.astro";
 import { getUniqueTags } from "@/utils/getUniqueTags";
 import { getSortedPosts } from "@/utils/getSortedPosts";
 import { slugifyAll } from "@/utils/slugify";
+import { toTransitionName } from "@/utils/toTransitionName";
 import { useTranslations } from "@/i18n";
 import config from "@/config";
 import {
@@ -37,6 +38,9 @@ export async function getStaticPaths({ paginate }: GetStaticPathsOptions) {
 const { page, tagName, tag } = Astro.props;
 const transitionName = getTagTransitionName(tag);
 const tagTransitionCss = getTagTransitionCss([tag]);
+const postTransitionNames = page.data.map(post =>
+  toTransitionName(post.data.title)
+);
 
 const locale = Astro.currentLocale ?? config.site.lang;
 const t = useTranslations(locale);
@@ -45,6 +49,69 @@ const t = useTranslations(locale);
 <Layout title={`${t.pages.tagTitle}: ${tagName} | ${config.site.title}`}>
   <Fragment slot="head">
     <style is:global set:html={tagTransitionCss}></style>
+
+    <script>
+      function setupTagReturnCleanup() {
+        if (document.documentElement.dataset.tagReturnCleanupBound === "true") {
+          return;
+        }
+
+        document.documentElement.dataset.tagReturnCleanupBound = "true";
+
+        const removeStyle = () =>
+          document.querySelector("[data-tag-return-cleanup]")?.remove();
+
+        document.addEventListener("astro:before-preparation", event => {
+          const list = document.querySelector<HTMLElement>(
+            "[data-post-transition-names]"
+          );
+
+          if (!list) return;
+
+          const target = new URL(event.to, location.href);
+          if (!target.pathname.replace(/\/+$/, "").endsWith("/tags")) return;
+
+          const names = JSON.parse(
+            list.dataset.postTransitionNames ?? "[]"
+          ) as string[];
+          const css = names
+            .map(
+              name => `
+            ::view-transition-old(${name}),
+            ::view-transition-new(${name}) {
+              animation: none !important;
+              opacity: 0 !important;
+              mix-blend-mode: normal;
+            }
+          `
+            )
+            .join("\n");
+
+          removeStyle();
+
+          const style = document.createElement("style");
+          style.dataset.tagReturnCleanup = "true";
+          style.textContent = css;
+          document.head.append(style);
+
+          window.setTimeout(removeStyle, 600);
+        });
+
+        document.addEventListener("astro:page-load", removeStyle);
+      }
+
+      const initTagReturnCleanup = () => setupTagReturnCleanup();
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initTagReturnCleanup, {
+          once: true,
+        });
+      } else {
+        initTagReturnCleanup();
+      }
+
+      document.addEventListener("astro:page-load", initTagReturnCleanup);
+    </script>
   </Fragment>
 
   <Header />
@@ -63,7 +130,7 @@ const t = useTranslations(locale);
       </span>
     </p>
 
-    <ul>
+    <ul data-post-transition-names={JSON.stringify(postTransitionNames)}>
       {page.data.map(data => <Card {...data} />)}
     </ul>
   </Main>
