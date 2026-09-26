@@ -34,3 +34,7 @@ compose.override.yaml
 
 # local-only share fixtures
 /test/
+
+# python caches
+__pycache__/
+*.py[cod]

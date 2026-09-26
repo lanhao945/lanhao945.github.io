@@ -61,6 +61,25 @@ links: # 可选：相关链接
 - 横屏/竖屏的切换规则写死在 `src/components/Timeline.astro` 的媒体查询里：
   `@media (min-width: 900px) and (orientation: landscape)` → 横排；其余（含横屏手机）→ 竖排。
 
+## GitHub 活动背景
+
+首页**宽屏横屏**时，时间轴背后会显示由 GitHub 每日贡献生成的活动场；竖屏完全不显示。背景不会改变时间轴结构：
+
+- 有年份节点的年份分别对应各自的年份列；
+- 时间轴跳过的年份会压缩到相邻年份之间的背景带；
+- GitHub 数据开始前的年份保持空底；
+- 上方是主活动场，下方是同数据约三分之一强度的趋势回声。
+
+本地刷新数据：
+
+```bash
+python scripts/fetch_github_activity.py --username lanhao945 --output src/data/github-activity.json
+```
+
+`.github/workflows/refresh-activity.yml` 每周一 UTC 03:17 自动运行，也可以手动触发。只有数据变化时才会提交到 `main`，随后自动触发 Pages 部署。
+
+如果希望在数据中包含私有贡献的聚合计数，请在仓库 Secrets 中配置 `GH_ACTIVITY_TOKEN`，使用具备 `read:user` 权限的 token；不配置时脚本会退回读取公开贡献日历。数据文件只保存每日聚合数量，不保存私有仓库名或事件明细。
+
 ## 写一篇分享
 
 在 `src/content/posts/` 新建 `.md` 或 `.mdx` 文件，文件名就是 URL（`/posts/<文件名>/`）：
