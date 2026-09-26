@@ -429,21 +429,16 @@ const yearGroups = Object.entries(
     display: block;
     flex: none;
     inline-size: var(--tick-width, 0.5rem);
-    block-size: 1px;
+    block-size: var(--tick-thickness, 1px);
     padding: 0;
     border: 0;
     border-radius: 9999px;
-    background: var(--color-border);
-    opacity: 0.55;
-    transition:
-      inline-size 0.14s ease,
-      background-color 0.14s ease,
-      opacity 0.14s ease;
-  }
-
-  .archive-scrollbar-tick[data-focus="true"] {
     background: var(--color-accent);
-    opacity: 1;
+    opacity: var(--tick-opacity, 0.55);
+    transition:
+      inline-size 0.16s ease,
+      block-size 0.16s ease,
+      opacity 0.16s ease;
   }
 
   .archive-scrollbar-preview {
@@ -555,8 +550,8 @@ const yearGroups = Object.entries(
     root.dataset.ready = "true";
 
     let frame = 0;
-    let activeIndex = 0;
-    let hoverIndex: number | null = null;
+    let activePosition = 0;
+    let hoverPosition: number | null = null;
     let dragging = false;
 
     const clamp = (value: number, min: number, max: number) =>
@@ -575,16 +570,21 @@ const yearGroups = Object.entries(
     const maxScroll = () =>
       Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 
-    const applyWave = (focusIndex: number) => {
+    const WAVE_SIGMA = 2.1;
+
+    const applyWave = (focusPosition: number) => {
       ticks.forEach((tick, index) => {
-        const distance = Math.abs(index - focusIndex);
-        const linear = Math.max(0, 1 - distance / 5);
-        const strength = linear * linear * (3 - 2 * linear);
-        const width = 0.5 + 0.95 * strength;
+        const distance = index - focusPosition;
+        const strength = Math.exp(
+          -(distance * distance) / (2 * WAVE_SIGMA * WAVE_SIGMA)
+        );
+        const width = 0.5 + 1.1 * strength;
+        const thickness = 1 + 2.2 * strength;
+        const opacity = 0.45 + 0.55 * strength;
 
         tick.style.setProperty("--tick-width", `${width.toFixed(3)}rem`);
-        tick.style.opacity = String(0.55 + 0.45 * strength);
-        tick.dataset.focus = index === focusIndex ? "true" : "false";
+        tick.style.setProperty("--tick-thickness", `${thickness.toFixed(3)}px`);
+        tick.style.setProperty("--tick-opacity", opacity.toFixed(3));
       });
     };
 
@@ -592,13 +592,10 @@ const yearGroups = Object.entries(
       const max = maxScroll();
       const progress = max > 0 ? clamp(window.scrollY / max, 0, 1) : 0;
 
-      activeIndex = Math.min(
-        ticks.length - 1,
-        Math.max(0, Math.round(progress * (ticks.length - 1)))
-      );
+      activePosition = progress * (ticks.length - 1);
 
-      if (hoverIndex === null && !dragging) {
-        applyWave(activeIndex);
+      if (hoverPosition === null && !dragging) {
+        applyWave(activePosition);
       }
     };
 
@@ -607,12 +604,12 @@ const yearGroups = Object.entries(
       frame = requestAnimationFrame(update);
     };
 
-    const indexFromClientY = (clientY: number) => {
+    const positionFromClientY = (clientY: number) => {
       const rect = track.getBoundingClientRect();
       if (rect.height <= 0) return 0;
 
       const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
-      return Math.round(ratio * (ticks.length - 1));
+      return ratio * (ticks.length - 1);
     };
 
     const scrollFromClientY = (clientY: number) => {
@@ -625,7 +622,11 @@ const yearGroups = Object.entries(
     };
 
     const showPreview = (index: number) => {
-      const tick = ticks[index];
+      const safeIndex = Math.min(
+        ticks.length - 1,
+        Math.max(0, Math.round(index))
+      );
+      const tick = ticks[safeIndex];
       if (!tick) return;
 
       const rootRect = root.getBoundingClientRect();
@@ -656,10 +657,10 @@ const yearGroups = Object.entries(
         return;
       }
 
-      const index = indexFromClientY(event.clientY);
-      hoverIndex = index;
-      applyWave(index);
-      showPreview(index);
+      const position = positionFromClientY(event.clientY);
+      hoverPosition = position;
+      applyWave(position);
+      showPreview(position);
     });
 
     track.addEventListener("pointerup", event => {
@@ -670,10 +671,10 @@ const yearGroups = Object.entries(
         // Pointer capture may already be released.
       }
 
-      const index = indexFromClientY(event.clientY);
-      hoverIndex = index;
-      applyWave(index);
-      showPreview(index);
+      const position = positionFromClientY(event.clientY);
+      hoverPosition = position;
+      applyWave(position);
+      showPreview(position);
     });
 
     track.addEventListener("pointercancel", () => {
@@ -681,9 +682,9 @@ const yearGroups = Object.entries(
     });
 
     root.addEventListener("pointerleave", () => {
-      hoverIndex = null;
+      hoverPosition = null;
       hidePreview();
-      applyWave(activeIndex);
+      applyWave(activePosition);
     });
 
     ticks.forEach((tick, index) => {
@@ -709,7 +710,7 @@ const yearGroups = Object.entries(
     document.addEventListener("astro:before-swap", cleanup, { once: true });
 
     update();
-    applyWave(activeIndex);
+    applyWave(activePosition);
   }
 
   const initArchiveScrollbar = () => setupArchiveScrollbar();
