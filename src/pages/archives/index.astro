@@ -223,7 +223,7 @@ const yearGroups = Object.entries(
     content: "";
     position: absolute;
     inset-block: 0.5rem 0;
-    inset-inline-start: calc(7rem + 1.5rem);
+    inset-inline-start: calc(8rem + 1.75rem);
     width: 1px;
     background: var(--color-border);
   }
@@ -243,7 +243,7 @@ const yearGroups = Object.entries(
     align-items: baseline;
     justify-content: flex-end;
     gap: 0.4rem;
-    inline-size: 7rem;
+    inline-size: 8rem;
     margin: 0 0 0.65rem;
     white-space: nowrap;
     font-size: 1.25rem;
@@ -255,7 +255,7 @@ const yearGroups = Object.entries(
   .archive-year-label::before {
     content: "";
     position: absolute;
-    left: calc(7rem + 1.5rem);
+    left: calc(8rem + 1.75rem);
     top: 0.55rem;
     width: 0.7rem;
     height: 0.7rem;
@@ -273,8 +273,8 @@ const yearGroups = Object.entries(
   .archive-month {
     position: relative;
     display: grid;
-    grid-template-columns: 7rem minmax(0, 1fr);
-    column-gap: 3rem;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    column-gap: 3.5rem;
     padding-block: 0.6rem;
   }
 
@@ -290,7 +290,7 @@ const yearGroups = Object.entries(
   .archive-month-label::before {
     content: "";
     position: absolute;
-    left: calc(7rem + 1.5rem);
+    left: calc(8rem + 1.75rem);
     top: 0.55rem;
     width: 0.42rem;
     height: 0.42rem;
@@ -389,7 +389,7 @@ const yearGroups = Object.entries(
       transition: none;
     }
   }
-  @media (min-width: 901px) {
+  @media (min-width: 1101px) {
     :global(html:has(body.archive-page)) {
       scrollbar-width: none;
     }
@@ -401,7 +401,7 @@ const yearGroups = Object.entries(
 
   .archive-scrollbar {
     position: fixed;
-    left: clamp(0.6rem, 1.8vw, 1.25rem);
+    left: clamp(1.25rem, 2.5vw, 2.5rem);
     top: 50%;
     z-index: 40;
     display: flex;
@@ -493,7 +493,7 @@ const yearGroups = Object.entries(
     -webkit-line-clamp: 2;
   }
 
-  @media (max-width: 900px) {
+  @media (max-width: 1100px) {
     .archive-scrollbar {
       display: none;
     }
