@@ -36,8 +36,12 @@ const items = [...tags]
   });
 ---
 
+<script is:inline>
+  document.documentElement.dataset.js = "true";
+</script>
+
 <div class="tag-cloud-shell">
-  <div class="tag-cloud" data-tag-cloud>
+  <div class="tag-cloud" data-tag-cloud data-ready="pending">
     <ul class="tag-cloud-stage" data-tag-cloud-stage>
       {
         items.map(({ tag, tagName, count, size, tier, rank }) => (
@@ -74,6 +78,13 @@ const items = [...tags]
     flex: 1 1 auto;
     min-block-size: 0;
     flex-direction: column;
+  }
+
+  :global(html[data-js="true"])
+    .tag-cloud[data-ready="pending"]
+    .tag-cloud-stage {
+    visibility: hidden;
+    opacity: 0;
   }
 
   .tag-cloud {
@@ -554,6 +565,14 @@ const items = [...tags]
   }
 
   const initTagClouds = () => setupAllTagClouds();
+
+  window.setTimeout(() => {
+    document
+      .querySelectorAll<HTMLElement>('[data-tag-cloud][data-ready="pending"]')
+      .forEach(container => {
+        container.dataset.ready = "false";
+      });
+  }, 1200);
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initTagClouds, {
