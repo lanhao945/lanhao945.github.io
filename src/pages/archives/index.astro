@@ -57,6 +57,20 @@ const formatDate = (date: Date, timezone?: string) =>
     day: "2-digit",
   }).format(date);
 
+const MAX_SCROLL_TICKS = 240;
+const scrollTickCount = Math.min(posts.length, MAX_SCROLL_TICKS);
+const scrollTicks = Array.from({ length: scrollTickCount }, (_, tickIndex) => {
+  const postIndex =
+    scrollTickCount <= 1
+      ? 0
+      : Math.round((tickIndex * (posts.length - 1)) / (scrollTickCount - 1));
+
+  return {
+    postIndex,
+    top: posts.length <= 1 ? 50 : (postIndex / (posts.length - 1)) * 100,
+  };
+});
+
 const yearGroups = Object.entries(
   getPostsByGroupCondition(posts, post => post.data.pubDatetime.getFullYear())
 )
@@ -170,21 +184,17 @@ const yearGroups = Object.entries(
     class="archive-scrollbar"
     data-archive-scrollbar
     aria-label="归档时间轴定位"
+    hidden={posts.length === 0}
   >
     <div class="archive-scrollbar-track" data-archive-scrollbar-track>
       {
-        posts.map((post, index) => (
-          <button
-            type="button"
+        scrollTicks.map(({ postIndex, top }) => (
+          <span
             class="archive-scrollbar-tick"
             data-archive-scrollbar-tick
-            data-index={index}
-            data-url={getPostUrl(post.id, post.filePath, locale)}
-            data-date={formatDate(post.data.pubDatetime, post.data.timezone)}
-            data-title={post.data.title}
-            data-description={post.data.description}
-            aria-label={`第 ${index + 1} 篇：${post.data.title}`}
-            tabindex="-1"
+            data-index={postIndex}
+            style={`--tick-top: ${top}%`}
+            aria-hidden="true"
           />
         ))
       }
@@ -412,12 +422,13 @@ const yearGroups = Object.entries(
     pointer-events: none;
   }
 
+  .archive-scrollbar[hidden] {
+    display: none;
+  }
+
   .archive-scrollbar-track {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: space-between;
+    display: block;
     inline-size: 2.25rem;
     block-size: 100%;
     pointer-events: auto;
@@ -425,9 +436,21 @@ const yearGroups = Object.entries(
     touch-action: none;
   }
 
+  .archive-scrollbar-track::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: 2px;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-accent) 32%, transparent);
+  }
+
   .archive-scrollbar-tick {
+    position: absolute;
+    left: 0;
+    top: var(--tick-top, 50%);
     display: block;
-    flex: none;
     inline-size: var(--tick-width, 0.5rem);
     block-size: var(--tick-thickness, 1px);
     padding: 0;
@@ -435,6 +458,7 @@ const yearGroups = Object.entries(
     border-radius: 9999px;
     background: var(--color-accent);
     opacity: var(--tick-opacity, 0.55);
+    transform: translateY(-50%);
     transition:
       inline-size 0.16s ease,
       block-size 0.16s ease,
@@ -542,12 +566,29 @@ const yearGroups = Object.entries(
       !previewDate ||
       !previewTitle ||
       !previewDescription ||
-      ticks.length === 0
+      ticks.length === 0 ||
+      posts.length === 0
     ) {
       return;
     }
 
     root.dataset.ready = "true";
+
+    const postData = posts.map(post => {
+      const link = post.querySelector<HTMLAnchorElement>(".archive-post-link");
+      const date = post.querySelector<HTMLElement>(".archive-post-date time");
+      const title = post.querySelector<HTMLElement>(".archive-post-title");
+      const description = post.querySelector<HTMLElement>(
+        ".archive-post-description"
+      );
+
+      return {
+        url: link?.href ?? "#",
+        date: date?.textContent?.trim() ?? "",
+        title: title?.textContent?.trim() ?? "",
+        description: description?.textContent?.trim() ?? "",
+      };
+    });
 
     let frame = 0;
     let activePosition = 0;
@@ -570,16 +611,33 @@ const yearGroups = Object.entries(
     const maxScroll = () =>
       Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 
-    const WAVE_SIGMA = 2.1;
+    const hidePreview = () => {
+      root.dataset.preview = "false";
+    };
+
+    const WAVE_SIGMA_PX = 12;
 
     const applyWave = (focusPosition: number) => {
-      ticks.forEach((tick, index) => {
-        const distance = index - focusPosition;
+      const count = posts.length;
+      const railHeight = track.clientHeight;
+      const focusRatio =
+        count > 1 ? clamp(focusPosition / (count - 1), 0, 1) : 0.5;
+      const focusY = focusRatio * railHeight;
+      const baseThickness = Math.min(
+        3,
+        Math.max(1, railHeight / Math.max(1, ticks.length))
+      );
+
+      ticks.forEach(tick => {
+        const index = Number(tick.dataset.index ?? 0);
+        const ratio = count > 1 ? index / (count - 1) : 0.5;
+        const tickY = ratio * railHeight;
+        const distancePx = tickY - focusY;
         const strength = Math.exp(
-          -(distance * distance) / (2 * WAVE_SIGMA * WAVE_SIGMA)
+          -(distancePx * distancePx) / (2 * WAVE_SIGMA_PX * WAVE_SIGMA_PX)
         );
         const width = 0.5 + 1.1 * strength;
-        const thickness = 1 + 2.2 * strength;
+        const thickness = baseThickness + 2 * strength;
         const opacity = 0.45 + 0.55 * strength;
 
         tick.style.setProperty("--tick-width", `${width.toFixed(3)}rem`);
@@ -590,9 +648,16 @@ const yearGroups = Object.entries(
 
     const update = () => {
       const max = maxScroll();
-      const progress = max > 0 ? clamp(window.scrollY / max, 0, 1) : 0;
+      const scrollable = max > 2;
+      root.hidden = !scrollable;
 
-      activePosition = progress * (ticks.length - 1);
+      if (!scrollable) {
+        hidePreview();
+        return;
+      }
+
+      const progress = clamp(window.scrollY / max, 0, 1);
+      activePosition = progress * (posts.length - 1);
 
       if (hoverPosition === null && !dragging) {
         applyWave(activePosition);
@@ -609,7 +674,7 @@ const yearGroups = Object.entries(
       if (rect.height <= 0) return 0;
 
       const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
-      return ratio * (ticks.length - 1);
+      return ratio * (posts.length - 1);
     };
 
     const scrollFromClientY = (clientY: number) => {
@@ -621,27 +686,24 @@ const yearGroups = Object.entries(
       scheduleUpdate();
     };
 
-    const showPreview = (index: number) => {
-      const safeIndex = Math.min(
-        ticks.length - 1,
-        Math.max(0, Math.round(index))
+    const showPreview = (position: number) => {
+      const index = Math.min(
+        posts.length - 1,
+        Math.max(0, Math.round(position))
       );
-      const tick = ticks[safeIndex];
-      if (!tick) return;
+      const data = postData[index];
+      if (!data) return;
 
       const rootRect = root.getBoundingClientRect();
-      const tickRect = tick.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      const ratio = posts.length > 1 ? index / (posts.length - 1) : 0.5;
 
-      preview.href = tick.dataset.url ?? "#";
-      previewDate.textContent = tick.dataset.date ?? "";
-      previewTitle.textContent = tick.dataset.title ?? "";
-      previewDescription.textContent = tick.dataset.description ?? "";
-      preview.style.top = `${tickRect.top - rootRect.top + tickRect.height / 2}px`;
+      preview.href = data.url;
+      previewDate.textContent = data.date;
+      previewTitle.textContent = data.title;
+      previewDescription.textContent = data.description;
+      preview.style.top = `${trackRect.top - rootRect.top + ratio * trackRect.height}px`;
       root.dataset.preview = "true";
-    };
-
-    const hidePreview = () => {
-      root.dataset.preview = "false";
     };
 
     track.addEventListener("pointerdown", event => {
@@ -685,17 +747,6 @@ const yearGroups = Object.entries(
       hoverPosition = null;
       hidePreview();
       applyWave(activePosition);
-    });
-
-    ticks.forEach((tick, index) => {
-      tick.addEventListener("click", () => {
-        const post = posts[index];
-        if (!post) return;
-
-        const top = post.getBoundingClientRect().top + window.scrollY - 16;
-        scrollInstant(top);
-        scheduleUpdate();
-      });
     });
 
     window.addEventListener("scroll", scheduleUpdate, { passive: true });
