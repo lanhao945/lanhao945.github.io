@@ -89,29 +89,41 @@ const restoreArchiveDocument = (
   return true;
 };
 
+const scrollInstant = (top: number) => {
+  const html = document.documentElement;
+  const previous = html.style.scrollBehavior;
+  html.style.scrollBehavior = "auto";
+  window.scrollTo(0, Math.max(0, top));
+  requestAnimationFrame(() => {
+    html.style.scrollBehavior = previous;
+  });
+};
+
 const restoreScrollPosition = (cache: ArchiveCacheState) => {
   const root = getArchiveRoot();
   if (!root) return;
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const target = cache.anchorKey
-        ? [...root.querySelectorAll<HTMLElement>("[data-archive-key]")].find(
-            item => item.dataset.archiveKey === cache.anchorKey
-          )
-        : null;
+  const apply = () => {
+    const target = cache.anchorKey
+      ? [...root.querySelectorAll<HTMLElement>("[data-archive-key]")].find(
+          item => item.dataset.archiveKey === cache.anchorKey
+        )
+      : null;
 
-      if (target) {
-        const targetTop =
-          target.getBoundingClientRect().top +
-          window.scrollY -
-          cache.anchorOffset;
-        window.scrollTo(0, Math.max(0, targetTop));
-      } else {
-        window.scrollTo(0, cache.scrollY);
-      }
-    });
-  });
+    if (target) {
+      const targetTop =
+        target.getBoundingClientRect().top +
+        window.scrollY -
+        cache.anchorOffset;
+      scrollInstant(targetTop);
+    } else {
+      scrollInstant(cache.scrollY);
+    }
+  };
+
+  // after-swap runs before the next paint, so this avoids showing the top first.
+  apply();
+  requestAnimationFrame(apply);
 };
 
 const restoreAfterSwap = () => {
@@ -169,6 +181,7 @@ const initArchiveState = () => {
     }
   });
 
+  document.addEventListener("astro:after-swap", restoreAfterSwap);
   document.addEventListener("astro:page-load", restoreAfterSwap);
 };
 
