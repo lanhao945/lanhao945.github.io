@@ -85,7 +85,10 @@ const yearGroups = Object.entries(
   });
 ---
 
-<Layout title={`${t.pages.archivesTitle} | ${config.site.title}`}>
+<Layout
+  title={`${t.pages.archivesTitle} | ${config.site.title}`}
+  bodyClass="archive-page"
+>
   <Fragment slot="head">
     <style is:global set:html={titleTransitionCss}></style>
   </Fragment>
@@ -163,6 +166,43 @@ const yearGroups = Object.entries(
     </div>
   </Main>
 
+  <aside class="archive-scrollbar" data-archive-scrollbar aria-hidden="true">
+    <div class="archive-scrollbar-track" data-archive-scrollbar-track>
+      {
+        posts.map((post, index) => (
+          <button
+            type="button"
+            class="archive-scrollbar-tick"
+            data-archive-scrollbar-tick
+            data-index={index}
+            data-title={post.data.title}
+            aria-label={`第 ${index + 1} 篇：${post.data.title}`}
+            tabindex="-1"
+          />
+        ))
+      }
+    </div>
+
+    <div class="archive-scrollbar-thumb" data-archive-scrollbar-thumb>
+      <svg viewBox="0 0 8 100" preserveAspectRatio="none">
+        <path d="M4 0 C 8 12, 0 25, 4 37 C 8 50, 0 63, 4 75 C 8 88, 0 95, 4 100"
+        ></path>
+      </svg>
+    </div>
+
+    <div class="archive-scrollbar-preview" data-archive-scrollbar-preview>
+      <svg
+        class="archive-scrollbar-preview-wave"
+        viewBox="0 0 60 10"
+        preserveAspectRatio="none"
+      >
+        <path d="M0 5 Q 7.5 0 15 5 T 30 5 T 45 5 T 60 5"></path>
+      </svg>
+      <span
+        class="archive-scrollbar-preview-title"
+        data-archive-scrollbar-preview-title></span>
+    </div>
+  </aside>
   <Footer />
 </Layout>
 
@@ -346,4 +386,297 @@ const yearGroups = Object.entries(
       transition: none;
     }
   }
+  @media (min-width: 901px) {
+    :global(html:has(body.archive-page)) {
+      scrollbar-width: none;
+    }
+
+    :global(html:has(body.archive-page)::-webkit-scrollbar) {
+      display: none;
+    }
+  }
+
+  .archive-scrollbar {
+    position: fixed;
+    left: clamp(0.6rem, 1.8vw, 1.25rem);
+    top: 50%;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    block-size: min(66vh, 42rem);
+    inline-size: 2rem;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  .archive-scrollbar-track {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    inline-size: 1rem;
+    block-size: 100%;
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .archive-scrollbar-tick {
+    display: block;
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 1px;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--color-border);
+    opacity: 0.78;
+    transition:
+      inline-size 0.12s ease,
+      background-color 0.12s ease,
+      opacity 0.12s ease;
+  }
+
+  .archive-scrollbar-tick[data-active="true"],
+  .archive-scrollbar-tick:hover {
+    inline-size: 1rem;
+    background: var(--color-accent);
+    opacity: 1;
+  }
+
+  .archive-scrollbar-thumb {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    inline-size: 0.75rem;
+    block-size: 3rem;
+    pointer-events: none;
+    transform: translateX(-50%);
+  }
+
+  .archive-scrollbar-thumb svg {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    overflow: visible;
+  }
+
+  .archive-scrollbar-thumb path,
+  .archive-scrollbar-preview-wave path {
+    fill: none;
+    stroke: var(--color-accent);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .archive-scrollbar-preview {
+    position: absolute;
+    left: 1.75rem;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-inline-size: min(22rem, 60vw);
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-background);
+    box-shadow: 0 8px 24px
+      color-mix(in srgb, var(--color-foreground) 12%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-50%) translateX(-0.25rem);
+    transition:
+      opacity 0.14s ease,
+      transform 0.14s ease;
+  }
+
+  .archive-scrollbar[data-preview="true"] .archive-scrollbar-preview {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  .archive-scrollbar-preview-wave {
+    flex: none;
+    inline-size: 2.5rem;
+    block-size: 0.6rem;
+  }
+
+  .archive-scrollbar-preview-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    color: var(--color-foreground);
+  }
+
+  @media (max-width: 900px) {
+    .archive-scrollbar {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .archive-scrollbar-tick,
+    .archive-scrollbar-preview {
+      transition: none;
+    }
+  }
 </style>
+
+<script>
+  function setupArchiveScrollbar() {
+    const root = document.querySelector<HTMLElement>(
+      "[data-archive-scrollbar]"
+    );
+    if (!root || root.dataset.ready === "true") return;
+
+    const track = root.querySelector<HTMLElement>(
+      "[data-archive-scrollbar-track]"
+    );
+    const thumb = root.querySelector<HTMLElement>(
+      "[data-archive-scrollbar-thumb]"
+    );
+    const preview = root.querySelector<HTMLElement>(
+      "[data-archive-scrollbar-preview]"
+    );
+    const previewTitle = root.querySelector<HTMLElement>(
+      "[data-archive-scrollbar-preview-title]"
+    );
+    const ticks = [
+      ...root.querySelectorAll<HTMLElement>("[data-archive-scrollbar-tick]"),
+    ];
+    const posts = [
+      ...document.querySelectorAll<HTMLElement>("[data-archive-key]"),
+    ];
+
+    if (!track || !thumb || !preview || !previewTitle || ticks.length === 0) {
+      return;
+    }
+
+    root.dataset.ready = "true";
+
+    let frame = 0;
+
+    const scrollInstant = (top: number) => {
+      const html = document.documentElement;
+      const previous = html.style.scrollBehavior;
+      html.style.scrollBehavior = "auto";
+      window.scrollTo(0, Math.max(0, top));
+      requestAnimationFrame(() => {
+        html.style.scrollBehavior = previous;
+      });
+    };
+
+    const maxScroll = () =>
+      Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+
+    const update = () => {
+      const railHeight = track.clientHeight;
+      const max = maxScroll();
+      const progress =
+        max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+      const thumbHeight = Math.max(
+        32,
+        Math.min(
+          railHeight,
+          (window.innerHeight / document.documentElement.scrollHeight) *
+            railHeight
+        )
+      );
+      const thumbOffset = progress * (railHeight - thumbHeight);
+
+      thumb.style.blockSize = `${thumbHeight}px`;
+      thumb.style.transform = `translateX(-50%) translateY(${thumbOffset}px)`;
+
+      const activeIndex = Math.min(
+        ticks.length - 1,
+        Math.max(0, Math.round(progress * (ticks.length - 1)))
+      );
+      ticks.forEach((tick, index) => {
+        tick.dataset.active = index === activeIndex ? "true" : "false";
+      });
+    };
+
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+
+    const scrollFromClientY = (clientY: number) => {
+      const rect = track.getBoundingClientRect();
+      if (rect.height <= 0) return;
+
+      const ratio = Math.min(
+        1,
+        Math.max(0, (clientY - rect.top) / rect.height)
+      );
+      scrollInstant(ratio * maxScroll());
+      scheduleUpdate();
+    };
+
+    const showPreview = (tick: HTMLElement, index: number) => {
+      const rootRect = root.getBoundingClientRect();
+      const tickRect = tick.getBoundingClientRect();
+      const title = tick.dataset.title ?? "";
+      previewTitle.textContent = `${index + 1} / ${ticks.length} · ${title}`;
+      preview.style.top = `${tickRect.top - rootRect.top + tickRect.height / 2}px`;
+      root.dataset.preview = "true";
+    };
+
+    const hidePreview = () => {
+      root.dataset.preview = "false";
+    };
+
+    track.addEventListener("pointerdown", event => {
+      track.setPointerCapture(event.pointerId);
+      scrollFromClientY(event.clientY);
+    });
+
+    track.addEventListener("pointermove", event => {
+      if (track.hasPointerCapture(event.pointerId)) {
+        scrollFromClientY(event.clientY);
+      }
+    });
+
+    ticks.forEach((tick, index) => {
+      tick.addEventListener("pointerenter", () => showPreview(tick, index));
+      tick.addEventListener("click", () => {
+        const post = posts[index];
+        if (!post) return;
+
+        const top = post.getBoundingClientRect().top + window.scrollY - 16;
+        scrollInstant(top);
+        scheduleUpdate();
+      });
+    });
+
+    root.addEventListener("pointerleave", hidePreview);
+
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+
+    const cleanup = () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+
+    document.addEventListener("astro:before-swap", cleanup, { once: true });
+
+    update();
+  }
+
+  const initArchiveScrollbar = () => setupArchiveScrollbar();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initArchiveScrollbar, {
+      once: true,
+    });
+  } else {
+    initArchiveScrollbar();
+  }
+
+  document.addEventListener("astro:page-load", initArchiveScrollbar);
+</script>
