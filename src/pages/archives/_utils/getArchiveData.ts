@@ -1,6 +1,7 @@
 import { getCollection, type CollectionEntry } from "astro:content";
 import config from "@/config";
 import { getPostUrl } from "@/utils/getPostPaths";
+import { toTransitionName } from "@/utils/toTransitionName";
 import { postFilter } from "@/utils/postFilter";
 
 /** 首屏直接渲染的文章数量 */
@@ -9,6 +10,8 @@ export const ARCHIVE_INITIAL_ITEMS = 8;
 export const ARCHIVE_PAGE_SIZE = 8;
 
 export type ArchivePostPayload = {
+  key: string;
+  transitionName: string;
   year: number;
   month: number;
   title: string;
@@ -35,6 +38,8 @@ export function serializeArchivePost(
   post: CollectionEntry<"posts">
 ): ArchivePostPayload {
   return {
+    key: post.id,
+    transitionName: toTransitionName(post.data.title),
     year: post.data.pubDatetime.getFullYear(),
     month: post.data.pubDatetime.getMonth() + 1,
     title: post.data.title,

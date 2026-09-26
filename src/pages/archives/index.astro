@@ -32,6 +32,7 @@ const archiveDataBase = getRelativeLocaleUrl(locale, "archives/data").replace(
 const posts = await getArchivePosts();
 const initialCount = Math.min(ARCHIVE_INITIAL_ITEMS, posts.length);
 const hasMore = posts.length > initialCount;
+const archiveVersion = `${posts.length}-${posts[0]?.id ?? "empty"}-${posts.at(-1)?.id ?? "empty"}`;
 
 const formatDate = (date: Date, timezone?: string) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -92,6 +93,7 @@ const yearGroups = Object.entries(
     <div
       class="archive-timeline"
       data-archive-timeline
+      data-archive-version={archiveVersion}
       data-archive-next={hasMore ? "1" : ""}
       data-archive-endpoint={archiveDataBase}
     >
@@ -137,7 +139,7 @@ const yearGroups = Object.entries(
                     {monthPosts
                       .filter(item => item.order < initialCount)
                       .map(({ post }) => (
-                        <li class="archive-post">
+                        <li class="archive-post" data-archive-key={post.id}>
                           <a
                             class="archive-post-link"
                             href={getPostUrl(post.id, post.filePath, locale)}
@@ -377,6 +379,8 @@ const yearGroups = Object.entries(
 
 <script>
   type ArchivePostPayload = {
+    key: string;
+    transitionName: string;
     year: number;
     month: number;
     title: string;
@@ -402,6 +406,7 @@ const yearGroups = Object.entries(
   const createArchivePost = (post: ArchivePostPayload) => {
     const item = document.createElement("li");
     item.className = "archive-post";
+    item.dataset.archiveKey = post.key;
 
     const link = document.createElement("a");
     link.className = "archive-post-link";
@@ -409,6 +414,7 @@ const yearGroups = Object.entries(
 
     const title = document.createElement("h3");
     title.className = "archive-post-title";
+    title.style.viewTransitionName = post.transitionName;
     title.textContent = post.title;
     link.append(title);
 
