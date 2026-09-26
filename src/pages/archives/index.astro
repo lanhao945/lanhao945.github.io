@@ -368,12 +368,19 @@ const yearGroups = Object.entries(
     }
   }
   @media (min-width: 1101px) {
+    /*
+     * 隐藏右侧原生滚动条，但必须保留它占的宽度。
+     * 用 `scrollbar-width: none` 会把 scrollbar-gutter 一起收掉，
+     * 归档页内容会比其它页面宽 15px，导航栏、分割线整体右移约 7.5px。
+     */
     :global(html:has(body.archive-page)) {
-      scrollbar-width: none;
+      scrollbar-color: transparent transparent;
     }
 
-    :global(html:has(body.archive-page)::-webkit-scrollbar) {
-      display: none;
+    :global(html:has(body.archive-page)::-webkit-scrollbar-thumb),
+    :global(html:has(body.archive-page)::-webkit-scrollbar-track),
+    :global(html:has(body.archive-page)::-webkit-scrollbar-corner) {
+      background: transparent;
     }
   }
 
