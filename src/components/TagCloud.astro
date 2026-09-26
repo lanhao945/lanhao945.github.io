@@ -68,9 +68,7 @@ const items = [...tags]
             >
               <span
                 class="tag-cloud-name"
-                style={{
-                  viewTransitionName: getTagTransitionName(tag),
-                }}
+                data-tag-title={getTagTransitionName(tag)}
               >
                 {tagName}
               </span>
