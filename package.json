@@ -19,7 +19,7 @@
     "test": "npm run test:unit && npm run test:data"
   },
   "dependencies": {
-    "@astrojs/mdx": "^6.0.1",
+    "@astrojs/mdx": "^8.0.2",
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.3",
     "@tailwindcss/vite": "^4.3.0",
