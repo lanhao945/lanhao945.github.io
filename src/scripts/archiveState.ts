@@ -1,3 +1,5 @@
+import { POST_TITLE_TRANSITION_NAME } from "@/utils/postTitleTransition";
+
 const CACHE_KEY = "lanhao:archive-state:v1";
 const RESTORE_KEY = "lanhao:archive-restore:v1";
 
@@ -122,6 +124,31 @@ const restoreScrollPosition = (cache: ArchiveCacheState) => {
   requestAnimationFrame(apply);
 };
 
+const nameIncomingArchiveTitle = (doc: Document, fromUrl: URL) => {
+  const targetPath = new URL(fromUrl, location.href).pathname.replace(
+    /\/+$/,
+    ""
+  );
+  const titles = [...doc.querySelectorAll<HTMLElement>(".archive-post-title")];
+  titles.forEach(title => title.style.removeProperty("view-transition-name"));
+
+  const link = [
+    ...doc.querySelectorAll<HTMLAnchorElement>("a.archive-post-link"),
+  ].find(candidate => {
+    const href = candidate.getAttribute("href");
+    if (!href) return false;
+
+    return (
+      new URL(href, location.href).pathname.replace(/\/+$/, "") === targetPath
+    );
+  });
+  const title = link?.querySelector<HTMLElement>(".archive-post-title");
+
+  if (title) {
+    title.style.viewTransitionName = POST_TITLE_TRANSITION_NAME;
+  }
+};
+
 const restoreAfterSwap = () => {
   let shouldRestore = false;
 
@@ -160,28 +187,32 @@ const initArchiveState = () => {
   document.addEventListener("astro:before-swap", event => {
     if (getArchiveRoot()) saveArchiveState();
 
-    const incomingDocument = (event as Event & { newDocument?: Document })
-      .newDocument;
-    if (!incomingDocument) return;
+    const transitionEvent = event as Event & {
+      newDocument?: Document;
+      from?: URL;
+    };
+    const incomingDocument = transitionEvent.newDocument;
+    if (!incomingDocument || !getArchiveRoot(incomingDocument)) return;
 
     /*
      * Only restore the cached archive when coming back from a post detail.
-     * Entering from nav/home should behave like a fresh archive visit and run
-     * the staggered entrance animation.
+     * Entering from nav/home should behave like a fresh archive visit.
      */
     const fromPostDetail = /\/posts\//.test(window.location.pathname);
     if (!fromPostDetail) return;
 
     const cache = readCache();
-    if (!cache) return;
-
-    if (restoreArchiveDocument(incomingDocument, cache)) {
+    if (cache && restoreArchiveDocument(incomingDocument, cache)) {
       pendingRestore = cache;
       try {
         sessionStorage.setItem(RESTORE_KEY, "true");
       } catch {
         // The module-level fallback still restores scroll for this document.
       }
+    }
+
+    if (transitionEvent.from) {
+      nameIncomingArchiveTitle(incomingDocument, transitionEvent.from);
     }
   });
 

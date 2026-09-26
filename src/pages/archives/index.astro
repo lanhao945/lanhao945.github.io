@@ -5,7 +5,7 @@ import Header from "@/components/Header.astro";
 import Main from "@/components/Main.astro";
 import Footer from "@/components/Footer.astro";
 import { getPostUrl } from "@/utils/getPostPaths";
-import { toTransitionName } from "@/utils/toTransitionName";
+import { POST_TITLE_TRANSITION_NAME } from "@/utils/postTitleTransition";
 import { getPostsByGroupCondition } from "./_utils/getPostsByGroupCondition";
 import { getArchivePosts } from "./_utils/getArchiveData";
 import { useTranslations } from "@/i18n";
@@ -25,29 +25,19 @@ const monthFormatter = new Intl.DateTimeFormat(locale, { month: "long" });
 const posts = await getArchivePosts();
 const archiveVersion = `${posts.length}-${posts[0]?.id ?? "empty"}-${posts.at(-1)?.id ?? "empty"}`;
 
-const titleTransitionNames = [
-  ...new Set(posts.map(post => toTransitionName(post.data.title))),
-];
-const titleTransitionCss =
-  titleTransitionNames
-    .map(
-      name => `
-      ::view-transition-group(${name}) {
-        animation-duration: 520ms;
-        animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1);
-        transform-origin: top left;
-        animation-fill-mode: both;
-      }
-      ::view-transition-old(${name}) {
-        animation: lanhao-title-old 520ms cubic-bezier(0.33, 0, 0.2, 1) both;
-      }
-      ::view-transition-new(${name}) {
-        animation: lanhao-title-new 520ms cubic-bezier(0.33, 0, 0.2, 1) both;
-      }
-    `
-    )
-    .join("\n") +
-  `
+const titleTransitionCss = `
+  ::view-transition-group(${POST_TITLE_TRANSITION_NAME}) {
+    animation-duration: 520ms;
+    animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1);
+    transform-origin: top left;
+    animation-fill-mode: both;
+  }
+  ::view-transition-old(${POST_TITLE_TRANSITION_NAME}) {
+    animation: lanhao-title-old 520ms cubic-bezier(0.33, 0, 0.2, 1) both;
+  }
+  ::view-transition-new(${POST_TITLE_TRANSITION_NAME}) {
+    animation: lanhao-title-new 520ms cubic-bezier(0.33, 0, 0.2, 1) both;
+  }
   @keyframes lanhao-title-old {
     0%, 30% { opacity: 1; }
     70%, 100% { opacity: 0; }
@@ -128,6 +118,7 @@ const yearGroups = Object.entries(
       class="archive-timeline"
       data-archive-timeline
       data-archive-version={archiveVersion}
+      data-post-title-transition={POST_TITLE_TRANSITION_NAME}
     >
       {
         yearGroups.map(({ year, count, months }) => (
@@ -158,16 +149,7 @@ const yearGroups = Object.entries(
                         class="archive-post-link"
                         href={getPostUrl(post.id, post.filePath, locale)}
                       >
-                        <h3
-                          class="archive-post-title"
-                          style={{
-                            viewTransitionName: toTransitionName(
-                              post.data.title
-                            ),
-                          }}
-                        >
-                          {post.data.title}
-                        </h3>
+                        <h3 class="archive-post-title">{post.data.title}</h3>
                       </a>
 
                       <div class="archive-post-date">
@@ -778,4 +760,66 @@ const yearGroups = Object.entries(
   }
 
   document.addEventListener("astro:page-load", initArchiveScrollbar);
+</script>
+
+<script>
+  function setupArchivePostTransition() {
+    const root = document.querySelector<HTMLElement>("[data-archive-timeline]");
+    if (!root || root.dataset.postTransitionReady === "true") return;
+
+    const transitionName = root.dataset.postTitleTransition;
+    if (!transitionName) return;
+
+    root.dataset.postTransitionReady = "true";
+
+    const clearRootNames = (target: HTMLElement) => {
+      target
+        .querySelectorAll<HTMLElement>(".archive-post-title")
+        .forEach(title => title.style.removeProperty("view-transition-name"));
+    };
+
+    const clearCurrentNames = () => {
+      const currentRoot = document.querySelector<HTMLElement>(
+        "[data-archive-timeline]"
+      );
+      if (currentRoot) clearRootNames(currentRoot);
+    };
+
+    root.addEventListener(
+      "click",
+      event => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+
+        const link = target.closest<HTMLAnchorElement>(".archive-post-link");
+        if (!link) return;
+
+        clearRootNames(root);
+        const title = link.querySelector<HTMLElement>(".archive-post-title");
+        if (title) title.style.viewTransitionName = transitionName;
+      },
+      true
+    );
+
+    if (
+      document.documentElement.dataset.archivePostTransitionBound !== "true"
+    ) {
+      document.documentElement.dataset.archivePostTransitionBound = "true";
+      document.addEventListener("astro:page-load", () => {
+        window.setTimeout(clearCurrentNames, 800);
+      });
+    }
+  }
+
+  const initArchivePostTransition = () => setupArchivePostTransition();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initArchivePostTransition, {
+      once: true,
+    });
+  } else {
+    initArchivePostTransition();
+  }
+
+  document.addEventListener("astro:page-load", initArchivePostTransition);
 </script>
