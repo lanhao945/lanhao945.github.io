@@ -298,11 +298,11 @@ const yearGroups = Object.entries(
     list-style: none;
   }
 
-  .archive-post {
+  :global(.archive-post) {
     padding-bottom: 0;
   }
 
-  .archive-post-title {
+  :global(.archive-post-title) {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
@@ -310,22 +310,22 @@ const yearGroups = Object.entries(
     transition: color 0.2s ease;
   }
 
-  .archive-post-link {
+  :global(.archive-post-link) {
     color: var(--color-foreground);
     text-decoration: none;
   }
 
-  .archive-post-link:hover .archive-post-title {
+  :global(.archive-post-link:hover .archive-post-title) {
     color: var(--color-accent);
   }
 
-  .archive-post-date {
+  :global(.archive-post-date) {
     margin-top: 0.05rem;
     color: var(--color-muted-foreground);
     font-size: 0.8125rem;
   }
 
-  .archive-post-description {
+  :global(.archive-post-description) {
     margin: 0.1rem 0 0;
     font-size: 0.875rem;
     line-height: 1.6;
@@ -369,7 +369,7 @@ const yearGroups = Object.entries(
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .archive-post-title {
+    :global(.archive-post-title) {
       transition: none;
     }
   }
