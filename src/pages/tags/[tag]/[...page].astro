@@ -13,6 +13,10 @@ import { getSortedPosts } from "@/utils/getSortedPosts";
 import { slugifyAll } from "@/utils/slugify";
 import { useTranslations } from "@/i18n";
 import config from "@/config";
+import {
+  getTagTransitionCss,
+  getTagTransitionName,
+} from "@/utils/getTagTransitionCss";
 
 export async function getStaticPaths({ paginate }: GetStaticPathsOptions) {
   const posts = await getCollection("posts", ({ data }) => !data.draft);
@@ -25,25 +29,32 @@ export async function getStaticPaths({ paginate }: GetStaticPathsOptions) {
 
     return paginate(tagPosts, {
       params: { tag },
-      props: { tagName },
+      props: { tagName, tag },
       pageSize: config.posts.perPage,
     });
   });
 }
 
-const { page, tagName } = Astro.props;
+const { page, tagName, tag } = Astro.props;
+const transitionName = getTagTransitionName(tag);
+const tagTransitionCss = getTagTransitionCss([tag]);
 
 const locale = Astro.currentLocale ?? config.site.lang;
 const t = useTranslations(locale);
 ---
 
 <Layout title={`${t.pages.tagTitle}: ${tagName} | ${config.site.title}`}>
+  <Fragment slot="head">
+    <style is:global set:html={tagTransitionCss}></style>
+  </Fragment>
+
   <Header />
 
   <Breadcrumb />
 
   <Main
-    pageTitle={`${t.pages.tagTitle}: ${tagName}`}
+    pageTitle={[`${t.pages.tagTitle}: `, tagName]}
+    pageTitleTransitionName={transitionName}
     pageDesc={`${t.pages.tagDesc} "${tagName}".`}
   >
     <ul>

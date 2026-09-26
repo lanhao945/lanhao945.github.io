@@ -8,15 +8,21 @@ import TagCloud from "@/components/TagCloud.astro";
 import { getUniqueTagsWithCounts } from "@/utils/getUniqueTags";
 import { useTranslations } from "@/i18n";
 import config from "@/config";
+import { getTagTransitionCss } from "@/utils/getTagTransitionCss";
 
 const posts = await getCollection("posts", ({ data }) => !data.draft);
 const tags = getUniqueTagsWithCounts(posts);
+const tagTransitionCss = getTagTransitionCss(tags.map(item => item.tag));
 
 const locale = Astro.currentLocale ?? config.site.lang;
 const t = useTranslations(locale);
 ---
 
 <Layout title={`${t.pages.tagsTitle} | ${config.site.title}`}>
+  <Fragment slot="head">
+    <style is:global set:html={tagTransitionCss}></style>
+  </Fragment>
+
   <Header />
 
   <Main

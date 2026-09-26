@@ -4,6 +4,7 @@ import config from "@/config";
 
 type Props = {
   pageTitle: string | [string, string];
+  pageTitleTransitionName?: string;
   pageDesc?: string;
   /** 不在页面上显示标题与描述（标题仍以 sr-only 保留，供读屏与 SEO 使用） */
   hideHeader?: boolean;
@@ -14,6 +15,7 @@ type Props = {
 
 const {
   pageTitle,
+  pageTitleTransitionName,
   pageDesc,
   hideHeader = false,
   noPadding = false,
@@ -37,7 +39,26 @@ const backUrl = config.features.showBackButton
       { "sr-only": hideHeader },
     ]}
   >
-    {pageTitle}
+    {
+      Array.isArray(pageTitle) ? (
+        <>
+          <span>{pageTitle[0]}</span>
+          <span
+            style={{
+              viewTransitionName: pageTitleTransitionName,
+            }}
+          >
+            {pageTitle[1]}
+          </span>
+        </>
+      ) : pageTitleTransitionName ? (
+        <span style={{ viewTransitionName: pageTitleTransitionName }}>
+          {pageTitle}
+        </span>
+      ) : (
+        pageTitle
+      )
+    }
   </h1>
   {
     pageDesc &&

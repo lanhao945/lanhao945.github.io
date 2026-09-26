@@ -1,6 +1,7 @@
 ---
 import { getRelativeLocaleUrl } from "astro:i18n";
 import config from "@/config";
+import { getTagTransitionName } from "@/utils/getTagTransitionCss";
 
 type TagCloudItem = {
   tag: string;
@@ -58,7 +59,14 @@ const items = [...tags]
               href={getRelativeLocaleUrl(locale, `tags/${tag}/`)}
               title={`${tagName} (${count})`}
             >
-              <span class="tag-cloud-name">{tagName}</span>
+              <span
+                class="tag-cloud-name"
+                style={{
+                  viewTransitionName: getTagTransitionName(tag),
+                }}
+              >
+                {tagName}
+              </span>
             </a>
           </li>
         ))
