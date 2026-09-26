@@ -166,7 +166,11 @@ const yearGroups = Object.entries(
     </div>
   </Main>
 
-  <aside class="archive-scrollbar" data-archive-scrollbar aria-hidden="true">
+  <aside
+    class="archive-scrollbar"
+    data-archive-scrollbar
+    aria-label="归档时间轴定位"
+  >
     <div class="archive-scrollbar-track" data-archive-scrollbar-track>
       {
         posts.map((post, index) => (
@@ -175,7 +179,10 @@ const yearGroups = Object.entries(
             class="archive-scrollbar-tick"
             data-archive-scrollbar-tick
             data-index={index}
+            data-url={getPostUrl(post.id, post.filePath, locale)}
+            data-date={formatDate(post.data.pubDatetime, post.data.timezone)}
             data-title={post.data.title}
+            data-description={post.data.description}
             aria-label={`第 ${index + 1} 篇：${post.data.title}`}
             tabindex="-1"
           />
@@ -183,25 +190,21 @@ const yearGroups = Object.entries(
       }
     </div>
 
-    <div class="archive-scrollbar-thumb" data-archive-scrollbar-thumb>
-      <svg viewBox="0 0 8 100" preserveAspectRatio="none">
-        <path d="M4 0 C 8 12, 0 25, 4 37 C 8 50, 0 63, 4 75 C 8 88, 0 95, 4 100"
-        ></path>
-      </svg>
-    </div>
-
-    <div class="archive-scrollbar-preview" data-archive-scrollbar-preview>
-      <svg
-        class="archive-scrollbar-preview-wave"
-        viewBox="0 0 60 10"
-        preserveAspectRatio="none"
-      >
-        <path d="M0 5 Q 7.5 0 15 5 T 30 5 T 45 5 T 60 5"></path>
-      </svg>
+    <a
+      class="archive-scrollbar-preview"
+      data-archive-scrollbar-preview
+      href="#"
+    >
+      <time
+        class="archive-scrollbar-preview-date"
+        data-archive-scrollbar-preview-date></time>
       <span
         class="archive-scrollbar-preview-title"
         data-archive-scrollbar-preview-title></span>
-    </div>
+      <span
+        class="archive-scrollbar-preview-description"
+        data-archive-scrollbar-preview-description></span>
+    </a>
   </aside>
   <Footer />
 </Layout>
@@ -404,7 +407,7 @@ const yearGroups = Object.entries(
     display: flex;
     align-items: center;
     block-size: min(66vh, 42rem);
-    inline-size: 2rem;
+    inline-size: 2.75rem;
     transform: translateY(-50%);
     pointer-events: none;
   }
@@ -413,9 +416,9 @@ const yearGroups = Object.entries(
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    inline-size: 1rem;
+    inline-size: 2.25rem;
     block-size: 100%;
     pointer-events: auto;
     cursor: pointer;
@@ -425,60 +428,32 @@ const yearGroups = Object.entries(
   .archive-scrollbar-tick {
     display: block;
     flex: none;
-    inline-size: 0.5rem;
+    inline-size: var(--tick-width, 0.5rem);
     block-size: 1px;
     padding: 0;
     border: 0;
     border-radius: 9999px;
     background: var(--color-border);
-    opacity: 0.78;
+    opacity: 0.55;
     transition:
-      inline-size 0.12s ease,
-      background-color 0.12s ease,
-      opacity 0.12s ease;
+      inline-size 0.14s ease,
+      background-color 0.14s ease,
+      opacity 0.14s ease;
   }
 
-  .archive-scrollbar-tick[data-active="true"],
-  .archive-scrollbar-tick:hover {
-    inline-size: 1rem;
+  .archive-scrollbar-tick[data-focus="true"] {
     background: var(--color-accent);
     opacity: 1;
   }
 
-  .archive-scrollbar-thumb {
-    position: absolute;
-    left: 50%;
-    top: 0;
-    inline-size: 0.75rem;
-    block-size: 3rem;
-    pointer-events: none;
-    transform: translateX(-50%);
-  }
-
-  .archive-scrollbar-thumb svg {
-    display: block;
-    inline-size: 100%;
-    block-size: 100%;
-    overflow: visible;
-  }
-
-  .archive-scrollbar-thumb path,
-  .archive-scrollbar-preview-wave path {
-    fill: none;
-    stroke: var(--color-accent);
-    stroke-width: 1.5;
-    vector-effect: non-scaling-stroke;
-  }
-
   .archive-scrollbar-preview {
     position: absolute;
-    left: 1.75rem;
+    left: 2.5rem;
     top: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    max-inline-size: min(22rem, 60vw);
-    padding: 0.45rem 0.65rem;
+    display: grid;
+    gap: 0.15rem;
+    inline-size: min(22rem, 60vw);
+    padding: 0.55rem 0.7rem;
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background: var(--color-background);
@@ -487,6 +462,7 @@ const yearGroups = Object.entries(
     opacity: 0;
     pointer-events: none;
     transform: translateY(-50%) translateX(-0.25rem);
+    text-decoration: none;
     transition:
       opacity 0.14s ease,
       transform 0.14s ease;
@@ -494,21 +470,32 @@ const yearGroups = Object.entries(
 
   .archive-scrollbar[data-preview="true"] .archive-scrollbar-preview {
     opacity: 1;
+    pointer-events: auto;
     transform: translateY(-50%) translateX(0);
   }
 
-  .archive-scrollbar-preview-wave {
-    flex: none;
-    inline-size: 2.5rem;
-    block-size: 0.6rem;
+  .archive-scrollbar-preview-date {
+    font-size: 0.7rem;
+    color: var(--color-muted-foreground);
   }
 
   .archive-scrollbar-preview-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
     color: var(--color-foreground);
+  }
+
+  .archive-scrollbar-preview-description {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--color-muted-foreground);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   @media (max-width: 900px) {
@@ -535,14 +522,17 @@ const yearGroups = Object.entries(
     const track = root.querySelector<HTMLElement>(
       "[data-archive-scrollbar-track]"
     );
-    const thumb = root.querySelector<HTMLElement>(
-      "[data-archive-scrollbar-thumb]"
-    );
-    const preview = root.querySelector<HTMLElement>(
+    const preview = root.querySelector<HTMLAnchorElement>(
       "[data-archive-scrollbar-preview]"
+    );
+    const previewDate = root.querySelector<HTMLElement>(
+      "[data-archive-scrollbar-preview-date]"
     );
     const previewTitle = root.querySelector<HTMLElement>(
       "[data-archive-scrollbar-preview-title]"
+    );
+    const previewDescription = root.querySelector<HTMLElement>(
+      "[data-archive-scrollbar-preview-description]"
     );
     const ticks = [
       ...root.querySelectorAll<HTMLElement>("[data-archive-scrollbar-tick]"),
@@ -551,13 +541,26 @@ const yearGroups = Object.entries(
       ...document.querySelectorAll<HTMLElement>("[data-archive-key]"),
     ];
 
-    if (!track || !thumb || !preview || !previewTitle || ticks.length === 0) {
+    if (
+      !track ||
+      !preview ||
+      !previewDate ||
+      !previewTitle ||
+      !previewDescription ||
+      ticks.length === 0
+    ) {
       return;
     }
 
     root.dataset.ready = "true";
 
     let frame = 0;
+    let activeIndex = 0;
+    let hoverIndex: number | null = null;
+    let dragging = false;
+
+    const clamp = (value: number, min: number, max: number) =>
+      Math.min(max, Math.max(min, value));
 
     const scrollInstant = (top: number) => {
       const html = document.documentElement;
@@ -572,31 +575,31 @@ const yearGroups = Object.entries(
     const maxScroll = () =>
       Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 
+    const applyWave = (focusIndex: number) => {
+      ticks.forEach((tick, index) => {
+        const distance = Math.abs(index - focusIndex);
+        const linear = Math.max(0, 1 - distance / 5);
+        const strength = linear * linear * (3 - 2 * linear);
+        const width = 0.5 + 0.95 * strength;
+
+        tick.style.setProperty("--tick-width", `${width.toFixed(3)}rem`);
+        tick.style.opacity = String(0.55 + 0.45 * strength);
+        tick.dataset.focus = index === focusIndex ? "true" : "false";
+      });
+    };
+
     const update = () => {
-      const railHeight = track.clientHeight;
       const max = maxScroll();
-      const progress =
-        max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
-      const thumbHeight = Math.max(
-        32,
-        Math.min(
-          railHeight,
-          (window.innerHeight / document.documentElement.scrollHeight) *
-            railHeight
-        )
-      );
-      const thumbOffset = progress * (railHeight - thumbHeight);
+      const progress = max > 0 ? clamp(window.scrollY / max, 0, 1) : 0;
 
-      thumb.style.blockSize = `${thumbHeight}px`;
-      thumb.style.transform = `translateX(-50%) translateY(${thumbOffset}px)`;
-
-      const activeIndex = Math.min(
+      activeIndex = Math.min(
         ticks.length - 1,
         Math.max(0, Math.round(progress * (ticks.length - 1)))
       );
-      ticks.forEach((tick, index) => {
-        tick.dataset.active = index === activeIndex ? "true" : "false";
-      });
+
+      if (hoverIndex === null && !dragging) {
+        applyWave(activeIndex);
+      }
     };
 
     const scheduleUpdate = () => {
@@ -604,23 +607,34 @@ const yearGroups = Object.entries(
       frame = requestAnimationFrame(update);
     };
 
+    const indexFromClientY = (clientY: number) => {
+      const rect = track.getBoundingClientRect();
+      if (rect.height <= 0) return 0;
+
+      const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
+      return Math.round(ratio * (ticks.length - 1));
+    };
+
     const scrollFromClientY = (clientY: number) => {
       const rect = track.getBoundingClientRect();
       if (rect.height <= 0) return;
 
-      const ratio = Math.min(
-        1,
-        Math.max(0, (clientY - rect.top) / rect.height)
-      );
+      const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
       scrollInstant(ratio * maxScroll());
       scheduleUpdate();
     };
 
-    const showPreview = (tick: HTMLElement, index: number) => {
+    const showPreview = (index: number) => {
+      const tick = ticks[index];
+      if (!tick) return;
+
       const rootRect = root.getBoundingClientRect();
       const tickRect = tick.getBoundingClientRect();
-      const title = tick.dataset.title ?? "";
-      previewTitle.textContent = `${index + 1} / ${ticks.length} · ${title}`;
+
+      preview.href = tick.dataset.url ?? "#";
+      previewDate.textContent = tick.dataset.date ?? "";
+      previewTitle.textContent = tick.dataset.title ?? "";
+      previewDescription.textContent = tick.dataset.description ?? "";
       preview.style.top = `${tickRect.top - rootRect.top + tickRect.height / 2}px`;
       root.dataset.preview = "true";
     };
@@ -630,18 +644,49 @@ const yearGroups = Object.entries(
     };
 
     track.addEventListener("pointerdown", event => {
+      dragging = true;
       track.setPointerCapture(event.pointerId);
+      hidePreview();
       scrollFromClientY(event.clientY);
     });
 
     track.addEventListener("pointermove", event => {
-      if (track.hasPointerCapture(event.pointerId)) {
+      if (dragging) {
         scrollFromClientY(event.clientY);
+        return;
       }
+
+      const index = indexFromClientY(event.clientY);
+      hoverIndex = index;
+      applyWave(index);
+      showPreview(index);
+    });
+
+    track.addEventListener("pointerup", event => {
+      dragging = false;
+      try {
+        track.releasePointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture may already be released.
+      }
+
+      const index = indexFromClientY(event.clientY);
+      hoverIndex = index;
+      applyWave(index);
+      showPreview(index);
+    });
+
+    track.addEventListener("pointercancel", () => {
+      dragging = false;
+    });
+
+    root.addEventListener("pointerleave", () => {
+      hoverIndex = null;
+      hidePreview();
+      applyWave(activeIndex);
     });
 
     ticks.forEach((tick, index) => {
-      tick.addEventListener("pointerenter", () => showPreview(tick, index));
       tick.addEventListener("click", () => {
         const post = posts[index];
         if (!post) return;
@@ -651,8 +696,6 @@ const yearGroups = Object.entries(
         scheduleUpdate();
       });
     });
-
-    root.addEventListener("pointerleave", hidePreview);
 
     window.addEventListener("scroll", scheduleUpdate, { passive: true });
     window.addEventListener("resize", scheduleUpdate);
@@ -666,6 +709,7 @@ const yearGroups = Object.entries(
     document.addEventListener("astro:before-swap", cleanup, { once: true });
 
     update();
+    applyWave(activeIndex);
   }
 
   const initArchiveScrollbar = () => setupArchiveScrollbar();
