@@ -6,9 +6,16 @@ import Datetime from "./Datetime.astro";
 
 type Props = {
   variant?: "h2" | "h3";
+  disableTransition?: boolean;
 } & CollectionEntry<"posts">;
 
-const { variant: Heading = "h2", id, data, filePath } = Astro.props;
+const {
+  variant: Heading = "h2",
+  disableTransition = false,
+  id,
+  data,
+  filePath,
+} = Astro.props;
 
 const { title, description, ...props } = data;
 ---
@@ -22,9 +29,13 @@ const { title, description, ...props } = data;
       "focus-visible:no-underline focus-visible:underline-offset-0",
     ]}
   >
-    <Heading transition:name={toTransitionName(title)}>
-      {title}
-    </Heading>
+    {
+      disableTransition ? (
+        <Heading>{title}</Heading>
+      ) : (
+        <Heading transition:name={toTransitionName(title)}>{title}</Heading>
+      )
+    }
   </a>
   <Datetime {...props} />
   <p>{description}</p>

@@ -11,6 +11,7 @@ export const getTagTransitionName = (tag: string) =>
 export const getTagTransitionCss = (tags: string[]) => {
   const rootCss = `
     ::view-transition-old(root) {
+      display: none !important;
       animation: none !important;
       opacity: 0 !important;
       mix-blend-mode: normal;
