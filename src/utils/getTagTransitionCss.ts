@@ -17,6 +17,7 @@ export const getTagTransitionCss = (tags: string[]) =>
       ::view-transition-group(${name}) {
         animation-duration: 260ms;
         animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+        transform-origin: top left;
       }
       ::view-transition-old(${name}) {
         animation: none !important;

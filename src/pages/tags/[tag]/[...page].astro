@@ -55,8 +55,6 @@ const t = useTranslations(locale);
     hideHeader
   >
     <p class="tag-detail-path" aria-hidden="true">
-      <span>{t.pages.tagTitle}</span>
-      <span class="tag-detail-arrow">»</span>
       <span
         class="tag-detail-name"
         style={{ viewTransitionName: transitionName }}
@@ -77,20 +75,15 @@ const t = useTranslations(locale);
 
 <style>
   .tag-detail-path {
-    display: flex;
-    align-items: baseline;
-    gap: 0.45rem;
     margin: 2rem 0 1.5rem;
-    font-size: 0.875rem;
-    color: var(--color-muted-foreground);
-  }
-
-  .tag-detail-arrow {
-    opacity: 0.65;
   }
 
   .tag-detail-name {
+    display: inline-block;
     color: var(--color-foreground);
+    font-size: 1.125rem;
     font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
   }
 </style>
