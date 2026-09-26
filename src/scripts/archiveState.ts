@@ -4,7 +4,6 @@ const RESTORE_KEY = "lanhao:archive-restore:v1";
 type ArchiveCacheState = {
   version: string;
   html: string;
-  next: number;
   scrollY: number;
   anchorKey: string | null;
   anchorOffset: number;
@@ -61,23 +60,9 @@ const saveArchiveState = () => {
 
   const anchor = getAnchor(root);
 
-  /*
-   * Do not persist the transient enter animation. If the user leaves while a
-   * batch is still fading in, restoring that class would make the same item
-   * animate again during the view transition and look like a flash.
-   */
-  const snapshot = root.cloneNode(true) as HTMLElement;
-  snapshot
-    .querySelectorAll<HTMLElement>(".archive-post-enter")
-    .forEach(item => {
-      item.classList.remove("archive-post-enter");
-      item.style.removeProperty("--archive-enter-delay");
-    });
-
   writeCache({
     version: root.dataset.archiveVersion,
-    html: snapshot.innerHTML,
-    next: Number(root.dataset.archiveNext || 0),
+    html: root.innerHTML,
     scrollY: window.scrollY,
     anchorKey: anchor.key,
     anchorOffset: anchor.offset,
@@ -97,8 +82,7 @@ const restoreArchiveDocument = (
   }
 
   root.innerHTML = cache.html;
-  root.dataset.archiveNext = cache.next > 0 ? String(cache.next) : "";
-  delete root.dataset.archiveLoadingReady;
+  root.dataset.archiveRestored = "true";
   return true;
 };
 

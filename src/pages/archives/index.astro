@@ -7,10 +7,7 @@ import Footer from "@/components/Footer.astro";
 import { getPostUrl } from "@/utils/getPostPaths";
 import { toTransitionName } from "@/utils/toTransitionName";
 import { getPostsByGroupCondition } from "./_utils/getPostsByGroupCondition";
-import {
-  ARCHIVE_INITIAL_ITEMS,
-  getArchivePosts,
-} from "./_utils/getArchiveData";
+import { getArchivePosts } from "./_utils/getArchiveData";
 import { useTranslations } from "@/i18n";
 import config from "@/config";
 
@@ -24,14 +21,10 @@ if (!config.features.showArchives && notFoundUrl) {
 
 const t = useTranslations(locale);
 const monthFormatter = new Intl.DateTimeFormat(locale, { month: "long" });
-const archiveDataBase = getRelativeLocaleUrl(locale, "archives/data").replace(
-  /\/$/,
-  ""
-);
 
 const posts = await getArchivePosts();
-const initialCount = Math.min(ARCHIVE_INITIAL_ITEMS, posts.length);
-const hasMore = posts.length > initialCount;
+const archiveVersion = `${posts.length}-${posts[0]?.id ?? "empty"}-${posts.at(-1)?.id ?? "empty"}`;
+
 const titleTransitionNames = [
   ...new Set(posts.map(post => toTransitionName(post.data.title))),
 ];
@@ -55,7 +48,6 @@ const titleTransitionCss = titleTransitionNames
     `
   )
   .join("\n");
-const archiveVersion = `${posts.length}-${posts[0]?.id ?? "empty"}-${posts.at(-1)?.id ?? "empty"}`;
 
 const formatDate = (date: Date, timezone?: string) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -65,13 +57,11 @@ const formatDate = (date: Date, timezone?: string) =>
     day: "2-digit",
   }).format(date);
 
-let postOrder = 0;
-
 const yearGroups = Object.entries(
   getPostsByGroupCondition(posts, post => post.data.pubDatetime.getFullYear())
 )
   .sort(([yearA], [yearB]) => Number(yearB) - Number(yearA))
-  .map(([year, yearPosts]) => {
+  .map(([year, yearPosts], yearIndex) => {
     const months = Object.entries(
       getPostsByGroupCondition(
         yearPosts,
@@ -79,27 +69,20 @@ const yearGroups = Object.entries(
       )
     )
       .sort(([monthA], [monthB]) => Number(monthB) - Number(monthA))
-      .map(([month, monthPosts]) => {
-        const monthItems = [...monthPosts]
-          .sort(
-            (a, b) =>
-              b.data.pubDatetime.getTime() - a.data.pubDatetime.getTime()
-          )
-          .map(post => ({ post, order: postOrder++ }));
-
-        return {
-          month: Number(month),
-          count: monthItems.length,
-          posts: monthItems,
-          visibleInitially: monthItems.some(item => item.order < initialCount),
-        };
-      });
+      .map(([month, monthPosts], monthIndex) => ({
+        month: Number(month),
+        count: monthPosts.length,
+        posts: [...monthPosts].sort(
+          (a, b) => b.data.pubDatetime.getTime() - a.data.pubDatetime.getTime()
+        ),
+        delay: yearIndex * 80 + monthIndex * 60,
+      }));
 
     return {
       year: Number(year),
       count: yearPosts.length,
       months,
-      visibleInitially: months.some(month => month.visibleInitially),
+      delay: yearIndex * 80,
     };
   });
 ---
@@ -108,6 +91,7 @@ const yearGroups = Object.entries(
   <Fragment slot="head">
     <style is:global set:html={titleTransitionCss}></style>
   </Fragment>
+
   <Header />
 
   <Main
@@ -120,15 +104,13 @@ const yearGroups = Object.entries(
       class="archive-timeline"
       data-archive-timeline
       data-archive-version={archiveVersion}
-      data-archive-next={hasMore ? "1" : ""}
-      data-archive-endpoint={archiveDataBase}
     >
       {
-        yearGroups.map(({ year, count, months, visibleInitially }) => (
+        yearGroups.map(({ year, count, months, delay }) => (
           <section
             class="archive-year"
             data-archive-year
-            data-empty={visibleInitially ? "false" : "true"}
+            style={`--archive-delay: ${delay}ms`}
           >
             <h2 class="archive-year-label">
               <span>{year}</span>
@@ -140,12 +122,12 @@ const yearGroups = Object.entries(
                 month,
                 count: monthCount,
                 posts: monthPosts,
-                visibleInitially: monthVisible,
+                delay: monthDelay,
               }) => (
                 <div
                   class="archive-month"
                   data-archive-month
-                  data-empty={monthVisible ? "false" : "true"}
+                  style={`--archive-delay: ${monthDelay}ms`}
                 >
                   <div class="archive-month-label">
                     <time
@@ -162,40 +144,34 @@ const yearGroups = Object.entries(
                     data-year={year}
                     data-month={month}
                   >
-                    {monthPosts
-                      .filter(item => item.order < initialCount)
-                      .map(({ post }) => (
-                        <li class="archive-post" data-archive-key={post.id}>
-                          <a
-                            class="archive-post-link"
-                            href={getPostUrl(post.id, post.filePath, locale)}
+                    {monthPosts.map(post => (
+                      <li class="archive-post" data-archive-key={post.id}>
+                        <a
+                          class="archive-post-link"
+                          href={getPostUrl(post.id, post.filePath, locale)}
+                        >
+                          <h3
+                            class="archive-post-title"
+                            transition:name={toTransitionName(post.data.title)}
                           >
-                            <h3
-                              class="archive-post-title"
-                              transition:name={toTransitionName(
-                                post.data.title
-                              )}
-                            >
-                              {post.data.title}
-                            </h3>
-                          </a>
+                            {post.data.title}
+                          </h3>
+                        </a>
 
-                          <div class="archive-post-date">
-                            <time
-                              datetime={post.data.pubDatetime.toISOString()}
-                            >
-                              {formatDate(
-                                post.data.pubDatetime,
-                                post.data.timezone
-                              )}
-                            </time>
-                          </div>
+                        <div class="archive-post-date">
+                          <time datetime={post.data.pubDatetime.toISOString()}>
+                            {formatDate(
+                              post.data.pubDatetime,
+                              post.data.timezone
+                            )}
+                          </time>
+                        </div>
 
-                          <p class="archive-post-description">
-                            {post.data.description}
-                          </p>
-                        </li>
-                      ))}
+                        <p class="archive-post-description">
+                          {post.data.description}
+                        </p>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )
@@ -203,21 +179,6 @@ const yearGroups = Object.entries(
           </section>
         ))
       }
-
-      <div class="archive-sentinel" data-archive-sentinel aria-hidden="true">
-      </div>
-
-      <div class="archive-loader" data-archive-loader aria-hidden="true"></div>
-
-      <div
-        class="archive-loading-indicator"
-        data-archive-loading-indicator
-        aria-hidden="true"
-      >
-        <span class="archive-loading-dot"></span>
-        <span class="archive-loading-dot"></span>
-        <span class="archive-loading-dot"></span>
-      </div>
     </div>
   </Main>
 
@@ -241,128 +202,6 @@ const yearGroups = Object.entries(
     inset-inline-start: calc(7rem + 1.5rem);
     width: 1px;
     background: var(--color-border);
-  }
-
-  .archive-year[data-empty="true"],
-  .archive-month[data-empty="true"] {
-    display: none;
-  }
-
-  .archive-sentinel {
-    block-size: 1px;
-  }
-
-  .archive-loader {
-    position: fixed;
-    inset-inline: 0;
-    top: 0;
-    z-index: 60;
-    block-size: 3px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-  }
-
-  .archive-loader::before {
-    content: "";
-    display: block;
-    block-size: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--color-accent),
-      transparent
-    );
-    transform: translateX(-100%);
-  }
-
-  .archive-timeline[data-archive-loading="true"] .archive-loader {
-    opacity: 1;
-  }
-
-  .archive-timeline[data-archive-loading="true"] .archive-loader::before {
-    animation: archive-loader-slide 0.85s linear infinite;
-  }
-
-  @keyframes archive-loader-slide {
-    to {
-      transform: translateX(100%);
-    }
-  }
-
-  .archive-loading-indicator {
-    position: fixed;
-    left: 50%;
-    bottom: max(1rem, env(safe-area-inset-bottom));
-    z-index: 61;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.45rem 0.7rem;
-    border: 1px solid var(--color-border);
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--color-background) 88%, transparent);
-    box-shadow: 0 8px 24px
-      color-mix(in srgb, var(--color-foreground) 12%, transparent);
-    backdrop-filter: blur(8px);
-    opacity: 0;
-    transform: translate(-50%, 0.5rem);
-    transition:
-      opacity 0.16s ease,
-      transform 0.16s ease;
-    pointer-events: none;
-  }
-
-  .archive-timeline[data-archive-loading="true"] .archive-loading-indicator {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
-
-  .archive-loading-dot {
-    inline-size: 0.35rem;
-    block-size: 0.35rem;
-    border-radius: 9999px;
-    background: var(--color-accent);
-    animation: archive-loading-pulse 0.9s ease-in-out infinite;
-  }
-
-  .archive-loading-dot:nth-child(2) {
-    animation-delay: 0.15s;
-  }
-
-  .archive-loading-dot:nth-child(3) {
-    animation-delay: 0.3s;
-  }
-
-  @keyframes archive-loading-pulse {
-    0%,
-    80%,
-    100% {
-      opacity: 0.25;
-      transform: scale(0.8);
-    }
-
-    40% {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  :global(.archive-post-enter) {
-    animation: archive-post-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: var(--archive-enter-delay, 0ms);
-  }
-
-  @keyframes archive-post-enter {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
   }
 
   .archive-year {
@@ -485,6 +324,26 @@ const yearGroups = Object.entries(
     color: var(--color-muted-foreground);
   }
 
+  @media (prefers-reduced-motion: no-preference) {
+    .archive-year,
+    .archive-month {
+      animation: archive-enter 0.5s ease-out both;
+      animation-delay: var(--archive-delay, 0ms);
+    }
+  }
+
+  @keyframes archive-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  .archive-timeline[data-archive-restored="true"] .archive-year,
+  .archive-timeline[data-archive-restored="true"] .archive-month {
+    animation: none;
+  }
+
   @media (max-width: 640px) {
     .archive-timeline {
       padding-inline-start: 1.5rem;
@@ -522,247 +381,13 @@ const yearGroups = Object.entries(
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :global(.archive-post-title),
-    :global(.archive-post-enter) {
-      transition: none;
+    .archive-year,
+    .archive-month {
       animation: none;
     }
 
-    .archive-loading-dot {
-      animation: none;
-      opacity: 1;
-      transform: none;
+    :global(.archive-post-title) {
+      transition: none;
     }
   }
 </style>
-
-<script>
-  type ArchivePostPayload = {
-    key: string;
-    transitionName: string;
-    year: number;
-    month: number;
-    title: string;
-    description: string;
-    publishedAt: string;
-    timezone: string;
-    url: string;
-  };
-
-  type ArchiveChunkPayload = {
-    posts: ArchivePostPayload[];
-    next: number | null;
-  };
-
-  const formatArchiveDate = (post: ArchivePostPayload) =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: post.timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date(post.publishedAt));
-
-  const createArchivePost = (post: ArchivePostPayload, index = 0) => {
-    const item = document.createElement("li");
-    item.className = "archive-post archive-post-enter";
-    item.dataset.archiveKey = post.key;
-    item.style.setProperty(
-      "--archive-enter-delay",
-      `${Math.min(index, 7) * 55}ms`
-    );
-    item.addEventListener(
-      "animationend",
-      () => {
-        item.classList.remove("archive-post-enter");
-        item.style.removeProperty("--archive-enter-delay");
-      },
-      { once: true }
-    );
-
-    const link = document.createElement("a");
-    link.className = "archive-post-link";
-    link.href = post.url;
-
-    const title = document.createElement("h3");
-    title.className = "archive-post-title";
-    title.style.viewTransitionName = post.transitionName;
-    title.textContent = post.title;
-    link.append(title);
-
-    const date = document.createElement("div");
-    date.className = "archive-post-date";
-
-    const time = document.createElement("time");
-    time.dateTime = post.publishedAt;
-    time.textContent = formatArchiveDate(post);
-    date.append(time);
-
-    const description = document.createElement("p");
-    description.className = "archive-post-description";
-    description.textContent = post.description;
-
-    item.append(link, date, description);
-    return item;
-  };
-
-  function setupArchiveLoading() {
-    const root = document.querySelector<HTMLElement>("[data-archive-timeline]");
-    if (!root || root.dataset.archiveLoadingReady === "true") return;
-
-    const endpoint = root.dataset.archiveEndpoint;
-    const sentinel = root.querySelector<HTMLElement>("[data-archive-sentinel]");
-    let next = Number(root.dataset.archiveNext || "0");
-
-    if (!endpoint || !sentinel || !next) return;
-
-    root.dataset.archiveLoadingReady = "true";
-
-    let loading = false;
-    let observer: IntersectionObserver | null = null;
-    const MIN_LOADING_MS = 480;
-
-    const nearSentinel = () =>
-      sentinel.getBoundingClientRect().top <= window.innerHeight + 400;
-
-    const appendPosts = (posts: ArchivePostPayload[]) => {
-      const groups = new Map<
-        string,
-        { year: number; month: number; items: ArchivePostPayload[] }
-      >();
-
-      for (const post of posts) {
-        const key = `${post.year}-${post.month}`;
-        const group = groups.get(key);
-
-        if (group) {
-          group.items.push(post);
-        } else {
-          groups.set(key, {
-            year: post.year,
-            month: post.month,
-            items: [post],
-          });
-        }
-      }
-
-      for (const group of groups.values()) {
-        const list = root.querySelector<HTMLElement>(
-          `[data-archive-month-list][data-year="${group.year}"][data-month="${group.month}"]`
-        );
-
-        if (!list) continue;
-
-        const fragment = document.createDocumentFragment();
-        group.items.forEach((post, index) => {
-          fragment.append(createArchivePost(post, index));
-        });
-        list.append(fragment);
-
-        const month = list.closest("[data-archive-month]");
-        const year = list.closest("[data-archive-year]");
-        if (month instanceof HTMLElement) month.dataset.empty = "false";
-        if (year instanceof HTMLElement) year.dataset.empty = "false";
-      }
-    };
-
-    const clearEnterAnimations = () => {
-      root
-        .querySelectorAll<HTMLElement>(".archive-post-enter")
-        .forEach(item => {
-          item.classList.remove("archive-post-enter");
-          item.style.removeProperty("--archive-enter-delay");
-        });
-    };
-
-    const handlePostActivation = (event: Event) => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest(".archive-post-link")
-      ) {
-        clearEnterAnimations();
-      }
-    };
-
-    root.addEventListener("pointerdown", handlePostActivation, true);
-    root.addEventListener("click", handlePostActivation, true);
-
-    const cleanup = () => {
-      observer?.disconnect();
-      window.removeEventListener("scroll", onScroll);
-      root.removeEventListener("pointerdown", handlePostActivation, true);
-      root.removeEventListener("click", handlePostActivation, true);
-    };
-
-    const loadNext = async () => {
-      if (loading || !next) return;
-      loading = true;
-      const startedAt = performance.now();
-      root.dataset.archiveLoading = "true";
-
-      try {
-        const response = await fetch(`${endpoint}/${next}.json`, {
-          headers: { Accept: "application/json" },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Archive chunk ${next} failed: ${response.status}`);
-        }
-
-        const data = (await response.json()) as ArchiveChunkPayload;
-        appendPosts(data.posts);
-        next = Number(data.next ?? 0);
-        root.dataset.archiveNext = next ? String(next) : "";
-      } catch {
-        // Keep `next` unchanged so the next scroll/intersection can retry.
-      }
-
-      const remaining = MIN_LOADING_MS - (performance.now() - startedAt);
-      if (remaining > 0) {
-        await new Promise(resolve => window.setTimeout(resolve, remaining));
-      }
-
-      root.dataset.archiveLoading = "false";
-      loading = false;
-
-      if (!next) {
-        cleanup();
-      } else if (nearSentinel()) {
-        requestAnimationFrame(() => void loadNext());
-      }
-    };
-
-    function onScroll() {
-      if (nearSentinel()) void loadNext();
-    }
-
-    if (typeof IntersectionObserver !== "undefined") {
-      observer = new IntersectionObserver(
-        entries => {
-          if (entries.some(entry => entry.isIntersecting)) {
-            void loadNext();
-          }
-        },
-        { rootMargin: "400px 0px" }
-      );
-      observer.observe(sentinel);
-    }
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-
-    document.addEventListener("astro:before-swap", cleanup, { once: true });
-
-    if (nearSentinel()) void loadNext();
-  }
-
-  const initArchiveLoading = () => setupArchiveLoading();
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initArchiveLoading, {
-      once: true,
-    });
-  } else {
-    initArchiveLoading();
-  }
-
-  document.addEventListener("astro:page-load", initArchiveLoading);
-</script>
