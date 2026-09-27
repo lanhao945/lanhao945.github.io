@@ -9,8 +9,10 @@
 - 主数据源：GitHub GraphQL `contributionsCollection.contributionCalendar`。
 - 当配置 `GH_ACTIVITY_TOKEN` 时使用该 token，可包含 `read:user` 对应的私有贡献聚合数。
 - 未配置 token 时，为本地预览和 Action 兜底，读取 GitHub 公开贡献日历 HTML；只保存每日聚合计数，不保存私有仓库名或事件明细。
-- 数据文件：`src/data/github-activity.json`，按日期保存 `0..n` 的贡献计数，并记录年份汇总与全局峰值。
-- 刷新的数据没有变化时不重写文件。
+- 数据目录：`src/data/activity-sources/**/*.json`。构建时递归读取所有文件，按日期直接相加，缺失日期视为 0。
+- Action 只维护 `src/data/activity-sources/github/auto.json`，其他嵌套目录属于手工数据源，不会被 Action 修改。
+- 所有来源使用同一个每日活动量量纲；合并完成后再执行 98 分位封顶、对数压缩和高度映射。
+- GitHub 自动层是日级全量刷新，刷新数据没有变化时不重写文件。
 
 ## 时间对齐
 

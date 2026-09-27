@@ -66,7 +66,7 @@ Run: `npm test`
 
 **Files:**
 - Modify: `src/components/Timeline.astro`
-- Create: `src/data/github-activity.json` by running the fetcher
+- Create: `src/data/activity-sources/github/auto.json` by running the fetcher
 
 **Step 1: Add the decorative SVG layer** inside `timeline-track`, hidden by default and displayed only in the existing landscape media query.
 
@@ -102,7 +102,7 @@ Run: `npm run format:check` and `npm run lint`
 
 **Step 1: Generate local data**
 
-Run: `python scripts/fetch_github_activity.py --username lanhao945 --output src/data/github-activity.json --start-year 2017`
+Run: `python scripts/fetch_github_activity.py --username lanhao945 --output src/data/activity-sources/github/auto.json --start-year 2017`
 
 **Step 2: Run the site**
 

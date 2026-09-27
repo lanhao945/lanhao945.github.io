@@ -63,22 +63,82 @@ links: # 可选：相关链接
 
 ## GitHub 活动背景
 
-首页**宽屏横屏**时，时间轴背后会显示由 GitHub 每日贡献生成的活动场；竖屏完全不显示。背景不会改变时间轴结构：
+首页**宽屏横屏**时，时间轴背后会显示由每日活动数据生成的活动场；竖屏完全不显示。背景不会改变时间轴结构：
 
 - 有年份节点的年份分别对应各自的年份列；
 - 时间轴跳过的年份会压缩到相邻年份之间的背景带；
-- GitHub 数据开始前的年份保持空底；
+- 数据开始前的年份保持空底；
 - 上方是主活动场，下方是同数据约三分之一强度的趋势回声。
 
-本地刷新数据：
+### 数据来源目录
 
-```bash
-python scripts/fetch_github_activity.py --username lanhao945 --output src/data/github-activity.json
+所有数据源都放在 `src/data/activity-sources/` 下，可以继续嵌套目录：
+
+```text
+src/data/activity-sources/
+  github/
+    auto.json          # GitHub Action 自动生成，不要手工修改
+  gitlab/
+    2016.json
+    2017.json
+  private-git/
+    2018.json
+  lost-account/
+    account-a/
+      2019.json
 ```
 
-`.github/workflows/refresh-activity.yml` 每周一 UTC 03:17 自动运行，也可以手动触发。只有数据变化时才会提交到 `main`，随后自动触发 Pages 部署。
+构建时会递归读取 `activity-sources/**/*.json`，所有文件按日期直接相加。缺失的日期按 `0` 处理，因此不必补齐全年。
 
-如果希望在数据中包含私有贡献的聚合计数，请在仓库 Secrets 中配置 `GH_ACTIVITY_TOKEN`，使用具备 `read:user` 权限的 token；不配置时脚本会退回读取公开贡献日历。数据文件只保存每日聚合数量，不保存私有仓库名或事件明细。
+### 添加自定义数据
+
+在任意子目录新建 JSON 即可。例如 `src/data/activity-sources/gitlab/2016.json`：
+
+```json
+{
+  "source": "gitlab",
+  "days": {
+    "2016-01-05": 3,
+    "2016-01-06": 1,
+    "2016-03-18": 5
+  }
+}
+```
+
+规则：
+
+- `days` 是必需字段：日期使用 `YYYY-MM-DD`，值必须是非负整数。
+- `source` 只是说明字段，可以省略；合并逻辑只读取 `days`。
+- 所有来源使用同一种“每日活动量”量纲，重叠日期直接相加。
+- 建议按“平台/账号/年份”拆文件，例如 `gitlab/2016.json`；文件可以放在任意嵌套层级。
+- 日期不存在于某个文件时视为当天该来源为 `0`，不是整年缺失。
+- 日期或数值非法时，构建会直接报错并指出具体 JSON 路径，避免静默算错。
+
+### 合并和映射方式
+
+```text
+activity-sources/**/*.json
+        ↓ 按日期相加
+mergedDays[date]
+        ↓ 按时间轴年份分段
+98 分位上限 + 对数压缩 + 高度映射
+        ↓
+时间轴上方主活动场 / 下方趋势回声
+```
+
+超过 98 分位的活动值会映射到最大高度 `1`，因此单个异常高峰不会把其他年份压扁。
+
+### GitHub 自动层
+
+本地刷新 GitHub 数据：
+
+```bash
+python scripts/fetch_github_activity.py --username lanhao945 --output src/data/activity-sources/github/auto.json
+```
+
+`.github/workflows/refresh-activity.yml` 每周一 UTC 03:17 自动运行，也可以手动触发。当前是**全量刷新 GitHub 来源**：读取可用年份并重新生成完整的 GitHub 日级数据；只有 `github/auto.json` 内容变化时才提交到 `main`，随后自动触发 Pages 部署。其他手工目录和文件不会被 Action 修改。
+
+如果希望在 GitHub 数据中包含私有贡献的聚合计数，请在仓库 Secrets 中配置 `GH_ACTIVITY_TOKEN`，使用具备 `read:user` 权限的 token；不配置时脚本会退回读取公开贡献日历。自动层只保存每日聚合数量，不保存私有仓库名或事件明细。
 
 ## 写一篇分享
 
