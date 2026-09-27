@@ -3,9 +3,13 @@ import test from "node:test";
 
 import {
   buildActivityField,
+  bindActivityAlignmentRefresh,
   buildActivitySegments,
+  computeActivityAxisRatio,
   computeActivityViewBox,
+  computeAlignedActivityViewBox,
   mergeActivitySources,
+  parseTranslateY,
 } from "./githubActivity.mjs";
 
 test("sums nested activity source files by date", () => {
@@ -68,6 +72,92 @@ test("rejects invalid activity source values with the source path", () => {
         },
       }),
     /gitlab\/2026\.json/
+  );
+});
+
+test("refreshes activity alignment after load and font readiness", async () => {
+  let loadHandler;
+  let resolveFonts;
+  let removedLoadHandler = false;
+  const fontsReady = new Promise(resolve => {
+    resolveFonts = resolve;
+  });
+  const windowObject = {
+    addEventListener(name, handler) {
+      if (name === "load") loadHandler = handler;
+    },
+    removeEventListener(name, handler) {
+      if (name === "load" && handler === loadHandler) removedLoadHandler = true;
+    },
+  };
+  const documentObject = {
+    readyState: "loading",
+    fonts: { ready: fontsReady },
+  };
+  let updates = 0;
+
+  const cleanup = bindActivityAlignmentRefresh({
+    scheduleUpdate: () => {
+      updates += 1;
+    },
+    windowObject,
+    documentObject,
+    requestFrame: callback => callback(),
+  });
+
+  assert.equal(updates, 0);
+  loadHandler();
+  assert.equal(updates, 1);
+
+  resolveFonts();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(updates, 2);
+
+  cleanup();
+  assert.equal(removedLoadHandler, true);
+});
+
+test("computes the timeline axis after subtracting animated translateY", () => {
+  const trackBox = { top: 100, height: 600 };
+  const axisBox = { top: 400, height: 8 };
+
+  assert.equal(computeActivityAxisRatio(trackBox, axisBox, 0), 304 / 600);
+  assert.equal(computeActivityAxisRatio(trackBox, axisBox, 6), 298 / 600);
+  assert.equal(
+    computeActivityAxisRatio({ top: 0, height: 0 }, axisBox, 0),
+    null
+  );
+});
+
+test("parses translateY from CSS transform matrices", () => {
+  assert.equal(parseTranslateY("none"), 0);
+  assert.equal(parseTranslateY("matrix(1, 0, 0, 1, 0, 6)"), 6);
+  assert.equal(
+    parseTranslateY("matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 6, 0, 1)"),
+    6
+  );
+  assert.equal(parseTranslateY("bad-transform"), 0);
+});
+
+test("only produces an aligned viewBox when the layout can be measured", () => {
+  assert.equal(
+    computeAlignedActivityViewBox(
+      "0 0 870 200",
+      { top: 100, height: 600 },
+      { top: 400, height: 8 },
+      6
+    ),
+    "0 0.667 870 200"
+  );
+  assert.equal(
+    computeAlignedActivityViewBox(
+      "0 0 870 200",
+      { top: 0, height: 0 },
+      { top: 400, height: 8 },
+      0
+    ),
+    null
   );
 });
 

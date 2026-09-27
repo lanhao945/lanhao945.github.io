@@ -332,7 +332,9 @@ const activityField = buildActivityField(
       inset: 0;
       display: block;
       overflow: hidden;
+      opacity: 0;
       pointer-events: none;
+      transition: opacity 0.45s ease-out;
       mask-image: linear-gradient(
         to bottom,
         transparent 0%,
@@ -349,6 +351,10 @@ const activityField = buildActivityField(
       );
     }
 
+    .timeline-activity[data-aligned="true"] {
+      opacity: 1;
+    }
+
     .timeline-activity-svg {
       display: block;
       inline-size: 100%;
@@ -358,6 +364,12 @@ const activityField = buildActivityField(
 
     :global([data-theme="dark"]) .timeline-activity-svg {
       opacity: 0.78;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .timeline-activity {
+        transition: none;
+      }
     }
 
     .timeline-activity-stop-faint {
@@ -591,7 +603,11 @@ const activityField = buildActivityField(
 </style>
 
 <script>
-  import { computeActivityViewBox } from "@/utils/githubActivity.mjs";
+  import {
+    bindActivityAlignmentRefresh,
+    computeAlignedActivityViewBox,
+    parseTranslateY,
+  } from "@/utils/githubActivity.mjs";
 
   const HORIZONTAL_QUERY = "(min-width: 900px) and (orientation: landscape)";
   const horizontal = window.matchMedia(HORIZONTAL_QUERY);
@@ -697,21 +713,23 @@ const activityField = buildActivityField(
       );
       const axisDot = timeline.querySelector<HTMLElement>(".timeline-year-dot");
       const baseViewBox = activitySvg?.dataset.baseViewBox;
-      if (
-        activitySvg &&
-        axisDot &&
-        track &&
-        baseViewBox &&
-        track.clientHeight > 0
-      ) {
-        const trackBox = track.getBoundingClientRect();
-        const axisBox = axisDot.getBoundingClientRect();
-        const axisRatio =
-          (axisBox.top + axisBox.height / 2 - trackBox.top) / trackBox.height;
-        activitySvg.setAttribute(
-          "viewBox",
-          computeActivityViewBox(baseViewBox, axisRatio)
+      if (activitySvg && axisDot && track && baseViewBox) {
+        const axisLabel = axisDot.closest<HTMLElement>(".timeline-year-label");
+        const transform = axisLabel
+          ? window.getComputedStyle(axisLabel).transform
+          : "none";
+        const alignedViewBox = computeAlignedActivityViewBox(
+          baseViewBox,
+          track.getBoundingClientRect(),
+          axisDot.getBoundingClientRect(),
+          parseTranslateY(transform)
         );
+        if (alignedViewBox) {
+          activitySvg.setAttribute("viewBox", alignedViewBox);
+          activitySvg
+            .closest<HTMLElement>(".timeline-activity")
+            ?.setAttribute("data-aligned", "true");
+        }
       }
     };
 
@@ -762,6 +780,13 @@ const activityField = buildActivityField(
 
     timeline.dataset.timelineReady = "true";
     scheduleUpdate();
+    bindActivityAlignmentRefresh({
+      scheduleUpdate,
+      windowObject: window,
+      documentObject: document,
+      requestFrame: (callback: FrameRequestCallback) =>
+        requestAnimationFrame(callback),
+    });
   }
 
   const initTimeline = () => setupTimeline();

@@ -298,6 +298,70 @@ export function buildActivityField(dayCounts, anchorYears) {
     segments,
   };
 }
+export function bindActivityAlignmentRefresh({
+  scheduleUpdate,
+  windowObject,
+  documentObject,
+  requestFrame,
+}) {
+  let disposed = false;
+  const refresh = () => {
+    if (!disposed) requestFrame(scheduleUpdate);
+  };
+  const onLoad = () => refresh();
+
+  if (documentObject.readyState === "complete") {
+    refresh();
+  } else {
+    windowObject.addEventListener("load", onLoad, { once: true });
+  }
+
+  const fontsReady = documentObject.fonts?.ready;
+  if (fontsReady?.then) {
+    fontsReady.then(refresh).catch(() => {});
+  }
+
+  return () => {
+    disposed = true;
+    windowObject.removeEventListener("load", onLoad);
+  };
+}
+
+export function parseTranslateY(transform) {
+  if (!transform || transform === "none") return 0;
+
+  const matrix3d = transform.match(/^matrix3d\((.+)\)$/);
+  if (matrix3d) {
+    const values = matrix3d[1].split(",").map(Number);
+    return Number.isFinite(values[13]) ? values[13] : 0;
+  }
+
+  const matrix = transform.match(/^matrix\((.+)\)$/);
+  if (matrix) {
+    const values = matrix[1].split(",").map(Number);
+    return Number.isFinite(values[5]) ? values[5] : 0;
+  }
+
+  return 0;
+}
+
+export function computeActivityAxisRatio(trackBox, axisBox, translateY = 0) {
+  if (
+    !trackBox ||
+    !axisBox ||
+    !Number.isFinite(trackBox.height) ||
+    trackBox.height <= 0 ||
+    !Number.isFinite(trackBox.top) ||
+    !Number.isFinite(axisBox.top) ||
+    !Number.isFinite(axisBox.height)
+  ) {
+    return null;
+  }
+
+  const axisCenter = axisBox.top + axisBox.height / 2 - translateY;
+  return (axisCenter - trackBox.top) / trackBox.height;
+}
+
 export function computeActivityViewBox(viewBox, axisRatio) {
   const [minX, minY, width, height] = String(viewBox)
     .trim()
@@ -311,4 +375,16 @@ export function computeActivityViewBox(viewBox, axisRatio) {
   return `${formatNumber(minX)} ${formatNumber(minY + offset)} ${formatNumber(
     width
   )} ${formatNumber(height)}`;
+}
+
+export function computeAlignedActivityViewBox(
+  baseViewBox,
+  trackBox,
+  axisBox,
+  translateY = 0
+) {
+  const axisRatio = computeActivityAxisRatio(trackBox, axisBox, translateY);
+  return axisRatio === null
+    ? null
+    : computeActivityViewBox(baseViewBox, axisRatio);
 }
