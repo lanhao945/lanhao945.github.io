@@ -105,14 +105,15 @@ test("maps anchored years to equal columns and missing years to the gap", () => 
   ]);
 });
 
-test("does not create an empty gap for adjacent years", () => {
+test("inserts a bridge segment for adjacent years", () => {
   const segments = buildActivitySegments([2024, 2025]);
 
-  assert.equal(segments.length, 2);
+  assert.equal(segments.length, 3);
   assert.deepEqual(
     segments.map(segment => [segment.kind, segment.xStart, segment.xEnd]),
     [
       ["year", 0, 100],
+      ["bridge", 100, 110],
       ["year", 110, 210],
     ]
   );
@@ -137,8 +138,8 @@ test("builds asymmetric finite SVG fields with the stronger value above the axis
   assert.match(field.lowerPath, /^M /);
   assert.doesNotMatch(field.upperPath, /NaN/);
   assert.doesNotMatch(field.lowerPath, /NaN/);
-  assert.ok(field.upperPath.split("M ").length - 1 >= 2);
-  assert.ok(field.lowerPath.split("M ").length - 1 >= 2);
+  assert.equal((field.upperPath.match(/M /g) ?? []).length, 1);
+  assert.equal((field.lowerPath.match(/M /g) ?? []).length, 1);
 
   const upperMax = Math.max(...field.segments.map(segment => segment.maxUpper));
   const lowerMax = Math.max(...field.segments.map(segment => segment.maxLower));
@@ -161,6 +162,30 @@ test("builds asymmetric finite SVG fields with the stronger value above the axis
     ?.map(Number);
   assert.ok(numericTokens?.length);
   assert.ok(numericTokens.every(Number.isFinite));
+});
+
+test("keeps adjacent year boundaries continuous across the visual gap", () => {
+  const field = buildActivityField(
+    {
+      "2024-12-31": 10,
+      "2025-01-01": 10,
+    },
+    [2024, 2025]
+  );
+  const commands = [...field.upperPath.matchAll(/[ML] ([\d.]+) ([\d.]+)/g)].map(
+    match => ({ x: Number(match[1]), y: Number(match[2]) })
+  );
+  const crossesBoundary = commands.some(
+    (point, index) =>
+      index > 0 &&
+      commands[index - 1].x < 100 &&
+      point.x > 110 &&
+      commands[index - 1].y < field.baseline &&
+      point.y < field.baseline
+  );
+
+  assert.equal((field.upperPath.match(/M /g) ?? []).length, 1);
+  assert.ok(crossesBoundary);
 });
 
 test("compresses skipped years into a visible gap segment", () => {

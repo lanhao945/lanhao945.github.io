@@ -100,16 +100,21 @@ export function buildActivitySegments(anchorYears) {
     });
 
     const nextYear = years[index + 1];
-    if (nextYear && nextYear > year + 1) {
+    if (nextYear) {
       segments.push({
-        kind: "gap",
+        kind: nextYear === year + 1 ? "bridge" : "gap",
         year: null,
-        years: Array.from(
-          { length: nextYear - year - 1 },
-          (_value, offset) => year + offset + 1
-        ),
-        startDate: `${year + 1}-01-01`,
-        endDate: `${nextYear - 1}-12-31`,
+        years:
+          nextYear === year + 1
+            ? []
+            : Array.from(
+                { length: nextYear - year - 1 },
+                (_value, offset) => year + offset + 1
+              ),
+        startDate:
+          nextYear === year + 1 ? `${year}-12-31` : `${year + 1}-01-01`,
+        endDate:
+          nextYear === year + 1 ? `${nextYear}-01-01` : `${nextYear - 1}-12-31`,
         xStart: xEnd,
         xEnd: xEnd + GAP_WIDTH,
       });
@@ -131,6 +136,8 @@ function normalizeDays(dayCounts) {
 }
 
 function sampleSegment(segment, dayCounts) {
+  if (segment.kind === "bridge") return [];
+
   const dates = eachDay(segment.startDate, segment.endDate);
   const rawValues = dates.map(day => dayCounts.get(day) ?? 0);
   const smoothedValues = movingAverage(rawValues, 7);
@@ -164,16 +171,16 @@ function sampleSegment(segment, dayCounts) {
   return points;
 }
 
-function pathFor(points, amplitude, baseline, xStart, xEnd, direction) {
+function pathForSeries(points, amplitude, baseline, direction, width) {
   const commands = [
-    `M ${formatNumber(xStart)} ${formatNumber(baseline)}`,
+    `M 0 ${formatNumber(baseline)}`,
     ...points.map(
       point =>
         `L ${formatNumber(point.x)} ${formatNumber(
           baseline + direction * point.intensity * amplitude
         )}`
     ),
-    `L ${formatNumber(xEnd)} ${formatNumber(baseline)}`,
+    `L ${formatNumber(width)} ${formatNumber(baseline)}`,
     "Z",
   ];
   return commands.join(" ");
@@ -262,32 +269,23 @@ export function buildActivityField(dayCounts, anchorYears) {
     };
   }
 
-  const upperPath = segments
-    .filter(segment => segment.maxUpper > 0)
-    .map(segment =>
-      pathFor(
-        segment.points,
-        UPPER_AMPLITUDE,
-        BASELINE,
-        segment.xStart,
-        segment.xEnd,
-        -1
-      )
-    )
-    .join(" ");
-  const lowerPath = segments
-    .filter(segment => segment.maxLower > 0)
-    .map(segment =>
-      pathFor(
-        segment.points,
-        UPPER_AMPLITUDE * LOWER_RATIO,
-        BASELINE,
-        segment.xStart,
-        segment.xEnd,
-        1
-      )
-    )
-    .join(" ");
+  const seriesPoints = segments
+    .flatMap(segment => segment.points)
+    .sort((left, right) => left.x - right.x);
+  const upperPath = pathForSeries(
+    seriesPoints,
+    UPPER_AMPLITUDE,
+    BASELINE,
+    -1,
+    width
+  );
+  const lowerPath = pathForSeries(
+    seriesPoints,
+    UPPER_AMPLITUDE * LOWER_RATIO,
+    BASELINE,
+    1,
+    width
+  );
 
   return {
     width,
