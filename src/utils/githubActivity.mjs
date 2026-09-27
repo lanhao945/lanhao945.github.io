@@ -19,6 +19,17 @@ function toIsoDate(year, month, day) {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
+function isValidIsoDate(value) {
+  if (!DATE_PATTERN.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
 function parseIsoDate(value) {
   const [year, month, day] = value.split("-").map(Number);
   return Date.UTC(year, month - 1, day);
@@ -113,8 +124,7 @@ function normalizeDays(dayCounts) {
   return new Map(
     Object.entries(dayCounts)
       .filter(
-        ([day, count]) =>
-          DATE_PATTERN.test(day) && Number.isFinite(Number(count))
+        ([day, count]) => isValidIsoDate(day) && Number.isFinite(Number(count))
       )
       .map(([day, count]) => [day, Math.max(0, Math.round(Number(count)))])
   );
@@ -167,6 +177,41 @@ function pathFor(points, amplitude, baseline, xStart, xEnd, direction) {
     "Z",
   ];
   return commands.join(" ");
+}
+
+export function mergeActivitySources(sources) {
+  if (!sources || typeof sources !== "object") return {};
+
+  const merged = new Map();
+  for (const [sourcePath, source] of Object.entries(sources)) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new TypeError(`${sourcePath}: activity source must be an object`);
+    }
+
+    const days = source.days ?? {};
+    if (!days || typeof days !== "object" || Array.isArray(days)) {
+      throw new TypeError(`${sourcePath}: "days" must be an object`);
+    }
+
+    for (const [date, rawValue] of Object.entries(days)) {
+      if (!isValidIsoDate(date)) {
+        throw new TypeError(`${sourcePath}: invalid activity date "${date}"`);
+      }
+
+      const value = Number(rawValue);
+      if (!Number.isInteger(value) || value < 0) {
+        throw new TypeError(
+          `${sourcePath}: invalid activity value "${rawValue}" for ${date}`
+        );
+      }
+
+      merged.set(date, (merged.get(date) ?? 0) + value);
+    }
+  }
+
+  return Object.fromEntries(
+    [...merged.entries()].sort(([left], [right]) => left.localeCompare(right))
+  );
 }
 
 export function buildActivityField(dayCounts, anchorYears) {

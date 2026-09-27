@@ -1,8 +1,10 @@
 ---
 import type { TimelineColumn } from "@/utils/getSortedTimeline";
 import TimelineItem from "./TimelineItem.astro";
-import githubActivity from "@/data/github-activity.json";
-import { buildActivityField } from "@/utils/githubActivity.mjs";
+import {
+  buildActivityField,
+  mergeActivitySources,
+} from "@/utils/githubActivity.mjs";
 import { useTranslations } from "@/i18n";
 
 type Props = {
@@ -18,8 +20,13 @@ const total = columns.reduce(
   0
 );
 const scrollable = columns.length > 1;
+const activitySourceModules = import.meta.glob(
+  "/src/data/activity-sources/**/*.json",
+  { eager: true, import: "default" }
+);
+const mergedActivityDays = mergeActivitySources(activitySourceModules);
 const activityField = buildActivityField(
-  githubActivity.days,
+  mergedActivityDays,
   columns.map(column => column.year)
 );
 ---

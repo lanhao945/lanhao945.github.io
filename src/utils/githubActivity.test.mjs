@@ -5,7 +5,71 @@ import {
   buildActivityField,
   buildActivitySegments,
   computeActivityViewBox,
+  mergeActivitySources,
 } from "./githubActivity.mjs";
+
+test("sums nested activity source files by date", () => {
+  const merged = mergeActivitySources({
+    "github/auto.json": {
+      source: "github",
+      days: { "2024-01-01": 3, "2024-01-02": 1 },
+    },
+    "gitlab/2024.json": {
+      source: "gitlab",
+      days: { "2024-01-01": 4, "2024-01-03": 2 },
+    },
+    "private/git/2024.json": {
+      source: "private-git",
+      days: { "2024-01-02": 5, "2024-01-03": 7 },
+    },
+  });
+
+  assert.deepEqual(merged, {
+    "2024-01-01": 7,
+    "2024-01-02": 6,
+    "2024-01-03": 9,
+  });
+});
+
+test("accepts a minimal activity source containing only days", () => {
+  const merged = mergeActivitySources({
+    "custom/2024.json": { days: { "2024-02-01": 2 } },
+  });
+
+  assert.deepEqual(merged, { "2024-02-01": 2 });
+});
+
+test("rejects invalid activity source values with the source path", () => {
+  assert.throws(
+    () =>
+      mergeActivitySources({
+        "gitlab/2024.json": {
+          days: { "2024-13-01": 2 },
+        },
+      }),
+    /gitlab\/2024\.json/
+  );
+
+  assert.throws(
+    () =>
+      mergeActivitySources({
+        "gitlab/2025.json": {
+          days: { "2025-01-01": -1 },
+        },
+      }),
+    /gitlab\/2025\.json/
+  );
+
+  assert.throws(
+    () =>
+      mergeActivitySources({
+        "gitlab/2026.json": {
+          days: { "2026-01-01": 1.5 },
+        },
+      }),
+    /gitlab\/2026\.json/
+  );
+});
 
 test("maps anchored years to equal columns and missing years to the gap", () => {
   const segments = buildActivitySegments([2020, 2024]);
