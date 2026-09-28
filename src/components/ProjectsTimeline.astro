@@ -443,9 +443,18 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
 </style>
 
 <script>
+  import { drainLoadZone, isInLoadZone } from "@/utils/projectsPaging.mjs";
+
   function setupProjects() {
     const section = document.querySelector<HTMLElement>("[data-projects]");
     if (!section) return;
+
+    // ClientRouter 复用同一个 document：离开本页时统一解绑，避免监听泄漏到其他页面
+    const controller = new AbortController();
+    const { signal } = controller;
+    document.addEventListener("astro:before-swap", () => controller.abort(), {
+      once: true,
+    });
 
     const items = [...section.querySelectorAll<HTMLElement>(".pr-item")];
     let loaded = items.filter(item => item.dataset.hidden !== "true").length;
@@ -465,21 +474,40 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
       }
     };
 
-    const nearBottom = () => {
+    const hasMore = () => loaded < items.length;
+
+    /** 视口底部是否已进入文档末尾的预载区（首屏本身就到底时同样成立） */
+    const inLoadZone = () => {
       const doc = document.documentElement;
-      return (
-        window.scrollY > 20 &&
-        window.scrollY + doc.clientHeight >= doc.scrollHeight - 300
-      );
+      return isInLoadZone({
+        scrollY: window.scrollY,
+        viewportHeight: doc.clientHeight,
+        scrollHeight: doc.scrollHeight,
+      });
     };
 
-    window.addEventListener(
-      "scroll",
-      () => {
-        if (loaded < items.length && nearBottom()) reveal();
-      },
-      { passive: true }
-    );
+    /*
+     * 自检 + 循环补足：首屏打开、滚动、窗口尺寸变化都会走这里。
+     * 每加载一批后重新测量，只要还能看到底部就继续加载，
+     * 避免"首屏放得下全部内容时再也等不到 scroll 事件"的死锁。
+     */
+    let checkQueued = false;
+    const checkAndLoad = () => {
+      if (checkQueued || !hasMore()) return;
+      checkQueued = true;
+      requestAnimationFrame(() => {
+        checkQueued = false;
+        drainLoadZone({
+          hasMore,
+          measure: inLoadZone,
+          loadNextBatch: reveal,
+        });
+      });
+    };
+
+    window.addEventListener("scroll", checkAndLoad, { passive: true, signal });
+    window.addEventListener("resize", checkAndLoad, { signal });
+    checkAndLoad();
 
     /*
      * 详情弹窗定位：以"当前视口"为界，保证整块详情不用滚动就能看全。
@@ -536,19 +564,31 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
     };
 
     for (const item of items) {
-      item.addEventListener("pointerenter", () => {
-        if (!detailsEnabled.matches) return;
-        active = item;
-        alignPopover();
-      });
-      item.addEventListener("focusin", () => {
-        if (!detailsEnabled.matches) return;
-        active = item;
-        alignPopover();
-      });
-      item.addEventListener("pointerleave", () => {
-        if (active === item) active = null;
-      });
+      item.addEventListener(
+        "pointerenter",
+        () => {
+          if (!detailsEnabled.matches) return;
+          active = item;
+          alignPopover();
+        },
+        { signal }
+      );
+      item.addEventListener(
+        "focusin",
+        () => {
+          if (!detailsEnabled.matches) return;
+          active = item;
+          alignPopover();
+        },
+        { signal }
+      );
+      item.addEventListener(
+        "pointerleave",
+        () => {
+          if (active === item) active = null;
+        },
+        { signal }
+      );
     }
 
     let alignQueued = false;
@@ -560,13 +600,20 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
         alignPopover();
       });
     };
-    window.addEventListener("scroll", onLayoutChange, { passive: true });
-    window.addEventListener("resize", onLayoutChange);
+    window.addEventListener("scroll", onLayoutChange, {
+      passive: true,
+      signal,
+    });
+    window.addEventListener("resize", onLayoutChange, { signal });
 
     // 从横屏切回竖屏时立即收起详情卡片
-    detailsEnabled.addEventListener("change", () => {
-      if (!detailsEnabled.matches) active = null;
-    });
+    detailsEnabled.addEventListener(
+      "change",
+      () => {
+        if (!detailsEnabled.matches) active = null;
+      },
+      { signal }
+    );
 
     // 滚动时整条轴线"升温"
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -581,7 +628,7 @@ const contentMap = new Map(contents.map(item => [item.slug, item.Content]));
           section.dataset.heat = "false";
         }, 200);
       },
-      { passive: true }
+      { passive: true, signal }
     );
   }
 

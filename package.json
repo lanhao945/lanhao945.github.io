@@ -14,7 +14,7 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "lint": "eslint .",
-    "test:unit": "node --test src/utils/githubActivity.test.mjs",
+    "test:unit": "node --test src/utils/githubActivity.test.mjs src/utils/projectsPaging.test.mjs",
     "test:data": "python -m unittest discover -s scripts/tests -v",
     "test": "npm run test:unit && npm run test:data"
   },
