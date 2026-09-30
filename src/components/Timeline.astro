@@ -28,22 +28,23 @@ const activitySourceModules = import.meta.glob(
 const mergedActivityDays = mergeActivitySources(activitySourceModules);
 
 /*
- * 证据占位：有卡片、或当年有贡献的年份各占一整列；两者都没有的连续年份
- * 才压缩成窄区间。列数与活动场映射都以占位年份为准（竖屏不受影响）。
+ * 列模型：卡片年各占一整列；连续无卡片年份只要区间内有贡献，就合并成一个
+ * 整列宽的区间列（用水平均值带表达，页面上不显示任何文字）；全零区间保持
+ * 最短宽度。竖屏不展示活动场，因此不受影响。
  */
-const { slots, runs: slotRuns } = buildEvidenceSlots(
+const { slots } = buildEvidenceSlots(
   columns.map(column => column.year),
   mergedActivityDays
 );
 const columnByYear = new Map(columns.map(column => [column.year, column]));
-const slotColumns = slots.map((year, index) => ({
-  year,
+const slotColumns = slots.map((slot, index) => ({
+  slot,
   index,
-  column: columnByYear.get(year) ?? null,
-}));
-const spanHints = slotRuns.map(run => ({
-  ...run,
-  label: run.from === run.to ? `${run.from}` : `${run.from}–${run.to}`,
+  column: slot.kind === "cards" ? (columnByYear.get(slot.year) ?? null) : null,
+  label:
+    slot.kind === "stretch"
+      ? `${slot.from === slot.to ? slot.from : `${slot.from}–${slot.to}`} · 日均 ${slot.meanPerDay.toFixed(1)} 次 · 累计 ${slot.total}`
+      : null,
 }));
 const activityField = buildActivityField(mergedActivityDays, slots);
 ---
@@ -114,13 +115,33 @@ const activityField = buildActivityField(mergedActivityDays, slots);
 
             {/* 纯装饰：沿轴线流动的光带（横屏生效；脚本接管后与自动滚动同速率） */}
             <li class="timeline-flow" aria-hidden="true" />
-            {slotColumns.map(({ year, index, column }) =>
-              column ? (
+            {slotColumns.map(({ slot, index, column, label }) => {
+              if (slot.kind === "stretch") {
+                return (
+                  <li
+                    class="timeline-year"
+                    data-year={slot.from}
+                    data-evidence="stretch"
+                    style={`--tl-col: ${index + 1}`}
+                    aria-label={label}
+                    title={label}
+                  >
+                    <span class="timeline-year-empty" aria-hidden="true" />
+                  </li>
+                );
+              }
+
+              if (!column) {
+                // 卡片槽一定有对应列；缺列时显式不渲染，避免静默错位
+                return null;
+              }
+
+              return (
                 <li
                   class="timeline-year"
-                  id={`year-${year}`}
+                  id={`year-${slot.year}`}
                   data-station="true"
-                  data-year={year}
+                  data-year={slot.year}
                   data-items={column.stacks.reduce(
                     (count, stack) => count + stack.items.length,
                     0
@@ -129,7 +150,7 @@ const activityField = buildActivityField(mergedActivityDays, slots);
                 >
                   <h2 class="timeline-year-label">
                     <span class="timeline-year-dot" aria-hidden="true" />
-                    <time datetime={String(year)}>{year}</time>
+                    <time datetime={String(slot.year)}>{slot.year}</time>
                   </h2>
                   {column.stacks.map(stack =>
                     stack.items.length > 0 ? (
@@ -141,29 +162,8 @@ const activityField = buildActivityField(mergedActivityDays, slots);
                     ) : null
                   )}
                 </li>
-              ) : (
-                <li
-                  class="timeline-year"
-                  data-year={year}
-                  data-evidence="activity"
-                  style={`--tl-col: ${index + 1}`}
-                  aria-hidden="true"
-                >
-                  <span class="timeline-year-empty" />
-                </li>
-              )
-            )}
-            {spanHints.map(hint => (
-              <li
-                class="timeline-span-hint"
-                data-compressed={hint.compressed ? "true" : "false"}
-                style={`--hint-slot: ${hint.slotStart}; --hint-slots: ${hint.slotCount}`}
-                aria-label={hint.label}
-                title={hint.label}
-              >
-                {hint.compressed ? "…" : hint.label}
-              </li>
-            ))}
+              );
+            })}
           </ol>
         </div>
       </div>
@@ -190,11 +190,10 @@ const activityField = buildActivityField(mergedActivityDays, slots);
     --tl-flow-color: color-mix(in srgb, var(--color-accent) 60%, #fff);
   }
 
-  /* 活动场、光带、空占位列与跨度提示只在横屏出现；竖屏不展示 GitHub 活动。 */
+  /* 活动场、光带与区间列的轴线只在横屏出现；竖屏不展示 GitHub 活动。 */
   .timeline-activity,
   .timeline-flow,
-  .timeline-year-empty,
-  .timeline-span-hint {
+  .timeline-year-empty {
     display: none;
   }
 
@@ -673,42 +672,6 @@ const activityField = buildActivityField(mergedActivityDays, slots);
       inline-size: calc(100% + var(--tl-gap));
       block-size: 1px;
       background: var(--color-border);
-    }
-
-    /* 连续无卡片区间的跨度提示：占整段列宽；压缩段只放一个短标记 */
-    .timeline-span-hint {
-      display: block;
-      position: absolute;
-      z-index: 1;
-      inset-block-start: 50%;
-      margin: 0;
-      transform: translateY(-1.15rem);
-      font-size: 0.75rem;
-      line-height: 1;
-      letter-spacing: 0.08em;
-      text-align: center;
-      white-space: nowrap;
-      color: var(--color-muted-foreground);
-      opacity: 0.72;
-      pointer-events: none;
-    }
-
-    .timeline-span-hint[data-compressed="false"] {
-      inset-inline-start: calc(
-        var(--hint-slot) * (var(--tl-column) + var(--tl-gap))
-      );
-      inline-size: calc(
-        var(--hint-slots) * (var(--tl-column) + var(--tl-gap)) - var(--tl-gap)
-      );
-    }
-
-    .timeline-span-hint[data-compressed="true"] {
-      inset-inline-start: calc(
-        (var(--hint-slot) + 1) * (var(--tl-column) + var(--tl-gap)) -
-          var(--tl-gap)
-      );
-      inline-size: var(--tl-gap);
-      font-size: 0.625rem;
     }
 
     .timeline-year:last-child .timeline-year-dot {
