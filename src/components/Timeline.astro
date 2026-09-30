@@ -3,6 +3,7 @@ import type { TimelineColumn } from "@/utils/getSortedTimeline";
 import TimelineItem from "./TimelineItem.astro";
 import {
   buildActivityField,
+  buildEvidenceSlots,
   mergeActivitySources,
 } from "@/utils/githubActivity.mjs";
 import { useTranslations } from "@/i18n";
@@ -25,10 +26,26 @@ const activitySourceModules = import.meta.glob(
   { eager: true, import: "default" }
 );
 const mergedActivityDays = mergeActivitySources(activitySourceModules);
-const activityField = buildActivityField(
-  mergedActivityDays,
-  columns.map(column => column.year)
+
+/*
+ * 证据占位：有卡片、或当年有贡献的年份各占一整列；两者都没有的连续年份
+ * 才压缩成窄区间。列数与活动场映射都以占位年份为准（竖屏不受影响）。
+ */
+const { slots, runs: slotRuns } = buildEvidenceSlots(
+  columns.map(column => column.year),
+  mergedActivityDays
 );
+const columnByYear = new Map(columns.map(column => [column.year, column]));
+const slotColumns = slots.map((year, index) => ({
+  year,
+  index,
+  column: columnByYear.get(year) ?? null,
+}));
+const spanHints = slotRuns.map(run => ({
+  ...run,
+  label: run.from === run.to ? `${run.from}` : `${run.from}–${run.to}`,
+}));
+const activityField = buildActivityField(mergedActivityDays, slots);
 ---
 
 <section class="timeline" data-timeline aria-label={t.timeline.title}>
@@ -44,7 +61,7 @@ const activityField = buildActivityField(
           aria-label={t.timeline.title}
           tabindex={scrollable ? 0 : -1}
         >
-          <ol class="timeline-track" style={`--tl-columns: ${columns.length}`}>
+          <ol class="timeline-track" style={`--tl-columns: ${slots.length}`}>
             {activityField.hasData && (
               <li class="timeline-activity" aria-hidden="true">
                 <svg
@@ -97,31 +114,54 @@ const activityField = buildActivityField(
 
             {/* 纯装饰：沿轴线流动的光带（横屏生效；脚本接管后与自动滚动同速率） */}
             <li class="timeline-flow" aria-hidden="true" />
-            {columns.map((column, index) => (
+            {slotColumns.map(({ year, index, column }) =>
+              column ? (
+                <li
+                  class="timeline-year"
+                  id={`year-${year}`}
+                  data-station="true"
+                  data-year={year}
+                  data-items={column.stacks.reduce(
+                    (count, stack) => count + stack.items.length,
+                    0
+                  )}
+                  style={`--tl-col: ${index + 1}`}
+                >
+                  <h2 class="timeline-year-label">
+                    <span class="timeline-year-dot" aria-hidden="true" />
+                    <time datetime={String(year)}>{year}</time>
+                  </h2>
+                  {column.stacks.map(stack =>
+                    stack.items.length > 0 ? (
+                      <ol class="timeline-events" data-side={stack.side}>
+                        {stack.items.map(entry => (
+                          <TimelineItem entry={entry} />
+                        ))}
+                      </ol>
+                    ) : null
+                  )}
+                </li>
+              ) : (
+                <li
+                  class="timeline-year"
+                  data-year={year}
+                  data-evidence="activity"
+                  style={`--tl-col: ${index + 1}`}
+                  aria-hidden="true"
+                >
+                  <span class="timeline-year-empty" />
+                </li>
+              )
+            )}
+            {spanHints.map(hint => (
               <li
-                class="timeline-year"
-                id={`year-${column.year}`}
-                data-station="true"
-                data-year={column.year}
-                data-items={column.stacks.reduce(
-                  (count, stack) => count + stack.items.length,
-                  0
-                )}
-                style={`--tl-col: ${index + 1}`}
+                class="timeline-span-hint"
+                data-compressed={hint.compressed ? "true" : "false"}
+                style={`--hint-slot: ${hint.slotStart}; --hint-slots: ${hint.slotCount}`}
+                aria-label={hint.label}
+                title={hint.label}
               >
-                <h2 class="timeline-year-label">
-                  <span class="timeline-year-dot" aria-hidden="true" />
-                  <time datetime={String(column.year)}>{column.year}</time>
-                </h2>
-                {column.stacks.map(stack =>
-                  stack.items.length > 0 ? (
-                    <ol class="timeline-events" data-side={stack.side}>
-                      {stack.items.map(entry => (
-                        <TimelineItem entry={entry} />
-                      ))}
-                    </ol>
-                  ) : null
-                )}
+                {hint.compressed ? "…" : hint.label}
               </li>
             ))}
           </ol>
@@ -150,9 +190,11 @@ const activityField = buildActivityField(
     --tl-flow-color: color-mix(in srgb, var(--color-accent) 60%, #fff);
   }
 
-  /* 活动场与光带只在横屏出现；竖屏不展示 GitHub 活动。 */
+  /* 活动场、光带、空占位列与跨度提示只在横屏出现；竖屏不展示 GitHub 活动。 */
   .timeline-activity,
-  .timeline-flow {
+  .timeline-flow,
+  .timeline-year-empty,
+  .timeline-span-hint {
     display: none;
   }
 
@@ -442,7 +484,8 @@ const activityField = buildActivityField(
     }
 
     /* 走过的年份：轴线点亮成暖色，越靠近当前站越亮；不随时间衰减 */
-    .timeline-year[data-tour="passed"] .timeline-year-dot::after {
+    .timeline-year[data-tour="passed"] .timeline-year-dot::after,
+    .timeline-year[data-tour="passed"] .timeline-year-empty::after {
       background: color-mix(
         in srgb,
         var(--color-accent) 65%,
@@ -610,6 +653,62 @@ const activityField = buildActivityField(
       width: calc(var(--tl-column) + var(--tl-gap) - 0.5rem);
       height: 1px;
       background: var(--color-border);
+    }
+
+    /* 无卡片但有贡献的年份：保留整列宽度，只画轴线，让活动场的坡度被看见 */
+    .timeline-year-empty {
+      display: block;
+      position: relative;
+      grid-column: var(--tl-col);
+      grid-row: 2;
+      align-self: center;
+      block-size: 1px;
+    }
+
+    .timeline-year-empty::after {
+      content: "";
+      position: absolute;
+      inset-inline-start: 0;
+      top: 50%;
+      inline-size: calc(100% + var(--tl-gap));
+      block-size: 1px;
+      background: var(--color-border);
+    }
+
+    /* 连续无卡片区间的跨度提示：占整段列宽；压缩段只放一个短标记 */
+    .timeline-span-hint {
+      display: block;
+      position: absolute;
+      z-index: 1;
+      inset-block-start: 50%;
+      margin: 0;
+      transform: translateY(-1.15rem);
+      font-size: 0.75rem;
+      line-height: 1;
+      letter-spacing: 0.08em;
+      text-align: center;
+      white-space: nowrap;
+      color: var(--color-muted-foreground);
+      opacity: 0.72;
+      pointer-events: none;
+    }
+
+    .timeline-span-hint[data-compressed="false"] {
+      inset-inline-start: calc(
+        var(--hint-slot) * (var(--tl-column) + var(--tl-gap))
+      );
+      inline-size: calc(
+        var(--hint-slots) * (var(--tl-column) + var(--tl-gap)) - var(--tl-gap)
+      );
+    }
+
+    .timeline-span-hint[data-compressed="true"] {
+      inset-inline-start: calc(
+        (var(--hint-slot) + 1) * (var(--tl-column) + var(--tl-gap)) -
+          var(--tl-gap)
+      );
+      inline-size: var(--tl-gap);
+      font-size: 0.625rem;
     }
 
     .timeline-year:last-child .timeline-year-dot {

@@ -5,6 +5,7 @@ import {
   buildActivityField,
   bindActivityAlignmentRefresh,
   buildActivitySegments,
+  buildEvidenceSlots,
   computeActivityAxisRatio,
   computeActivityViewBox,
   computeAlignedActivityViewBox,
@@ -307,4 +308,104 @@ test("shifts the activity baseline to the measured timeline axis", () => {
   assert.equal(computeActivityViewBox("0 0 870 200", 0.5), "0 0 870 200");
   assert.equal(computeActivityViewBox("0 0 870 200", 0.534), "0 -6.8 870 200");
   assert.equal(computeActivityViewBox("0 0 870 200", 0.99), "0 -80 870 200");
+});
+
+test("证据占位：有贡献的无卡片年份各占一列，只有真空白才压缩", () => {
+  const cardYears = [2012, 2016, 2017, 2018, 2019, 2024, 2025, 2026];
+  const days = {};
+  for (let year = 2017; year <= 2026; year += 1) days[`${year}-03-01`] = 3;
+
+  const { slots, runs } = buildEvidenceSlots(cardYears, days);
+
+  assert.deepEqual(
+    slots,
+    [2012, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+  );
+  assert.deepEqual(
+    runs.map(run => [
+      run.from,
+      run.to,
+      run.compressed,
+      run.slotStart,
+      run.slotCount,
+    ]),
+    [
+      [2013, 2015, true, 0, 0],
+      [2020, 2023, false, 5, 4],
+    ]
+  );
+});
+
+test("证据占位：某年贡献归零后重新塌缩进压缩区间", () => {
+  const cardYears = [2016, 2024];
+  const withActivity = buildEvidenceSlots(cardYears, {
+    "2021-05-05": 4,
+    "2022-05-05": 2,
+  });
+  const withoutActivity = buildEvidenceSlots(cardYears, {});
+
+  assert.deepEqual(withActivity.slots, [2016, 2021, 2022, 2024]);
+  assert.deepEqual(withoutActivity.slots, [2016, 2024]);
+  assert.deepEqual(
+    withoutActivity.runs.map(run => [run.from, run.to, run.compressed]),
+    [[2017, 2023, true]]
+  );
+});
+
+test("证据占位：活动数据缺失时退回卡片年份，且不吃掉非法日期", () => {
+  const { slots, runs } = buildEvidenceSlots([2018, 2019], {
+    "not-a-date": 5,
+    "2020-13-01": 9,
+    "2020-01-01": 0,
+  });
+
+  assert.deepEqual(slots, [2018, 2019]);
+  assert.deepEqual(runs, []);
+});
+
+test("证据占位：首次出现贡献的年份自动展开为整列", () => {
+  const { slots, runs } = buildEvidenceSlots([2012, 2016], {
+    "2014-07-01": 2,
+  });
+
+  assert.deepEqual(slots, [2012, 2014, 2016]);
+  // 2013–2015 整体没有卡片，仍是一个跨度；其中 2014 有贡献，因此占一整列
+  assert.deepEqual(
+    runs.map(run => [
+      run.from,
+      run.to,
+      run.compressed,
+      run.slotStart,
+      run.slotCount,
+    ]),
+    [[2013, 2015, false, 1, 1]]
+  );
+});
+
+test("证据占位：占据整列的年份在活动场里拿到整列宽度", () => {
+  const cardYears = [2019, 2024];
+  const days = { "2021-04-01": 6 };
+  const { slots } = buildEvidenceSlots(cardYears, days);
+  const segments = buildActivitySegments(slots);
+  const yearSegments = segments.filter(segment => segment.kind === "year");
+
+  assert.deepEqual(
+    yearSegments.map(segment => [segment.year, segment.xEnd - segment.xStart]),
+    [
+      [2019, 100],
+      [2021, 100],
+      [2024, 100],
+    ]
+  );
+  const gap = segments.find(segment => segment.kind === "gap");
+  assert.equal(gap.xEnd - gap.xStart, 10);
+  assert.deepEqual(gap.years, [2020]);
+});
+
+test("证据占位：空输入返回空结果", () => {
+  assert.deepEqual(buildEvidenceSlots([], {}), { slots: [], runs: [] });
+  assert.deepEqual(buildEvidenceSlots(undefined, undefined), {
+    slots: [],
+    runs: [],
+  });
 });

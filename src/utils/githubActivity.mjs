@@ -124,6 +124,92 @@ export function buildActivitySegments(anchorYears) {
   return segments;
 }
 
+/**
+ * 证据占位：有卡片、或当年贡献大于 0 的年份各占一整列；两者都没有的连续
+ * 年份合并为压缩区间。占位完全由数据推导（不硬编码年份）。
+ *
+ * @param {number[]} cardYears 有卡片的年份
+ * @param {Record<string, number>} dayCounts 每日贡献（ISO 日期 → 次数）
+ * @returns {{
+ *   slots: number[],
+ *   runs: {
+ *     from: number,
+ *     to: number,
+ *     compressed: boolean,
+ *     slotStart: number,
+ *     slotCount: number
+ *   }[]
+ * }} runs 为连续"无卡片"年份区间：compressed 表示该段完全没有证据（窄区间）；
+ *   否则 slotStart/slotCount 指出它占据的整列范围（索引对应 slots）。
+ */
+export function buildEvidenceSlots(cardYears, dayCounts) {
+  const cards = new Set(
+    (Array.isArray(cardYears) ? cardYears : [])
+      .map(Number)
+      .filter(Number.isInteger)
+  );
+
+  const totals = new Map();
+  if (dayCounts && typeof dayCounts === "object" && !Array.isArray(dayCounts)) {
+    for (const [day, rawValue] of Object.entries(dayCounts)) {
+      if (!isValidIsoDate(day)) continue;
+      const value = Number(rawValue);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      const year = Number(day.slice(0, 4));
+      totals.set(year, (totals.get(year) ?? 0) + value);
+    }
+  }
+
+  const evidenceYears = new Set(cards);
+  for (const year of totals.keys()) evidenceYears.add(year);
+
+  const slots = [...evidenceYears].sort((left, right) => left - right);
+  if (slots.length === 0) return { slots: [], runs: [] };
+
+  const slotIndex = new Map(slots.map((year, index) => [year, index]));
+  const stretches = [];
+  let current = null;
+
+  for (let year = slots[0]; year <= slots[slots.length - 1]; year += 1) {
+    if (cards.has(year)) {
+      current = null;
+      continue;
+    }
+    if (current && current.to === year - 1) {
+      current.to = year;
+    } else {
+      current = { from: year, to: year };
+      stretches.push(current);
+    }
+  }
+
+  const runs = stretches.map(stretch => {
+    const runSlots = [];
+    for (let year = stretch.from; year <= stretch.to; year += 1) {
+      if (slotIndex.has(year)) runSlots.push(year);
+    }
+
+    if (runSlots.length === 0) {
+      // 整段都没有证据：压缩成窄区间，提示挂在它前面那一列之后
+      return {
+        ...stretch,
+        compressed: true,
+        slotStart: slotIndex.get(stretch.from - 1) ?? -1,
+        slotCount: 0,
+      };
+    }
+
+    return {
+      ...stretch,
+      compressed: false,
+      slotStart: slotIndex.get(runSlots[0]),
+      slotCount: runSlots.length,
+    };
+  });
+
+  return { slots, runs };
+}
+
 function normalizeDays(dayCounts) {
   if (!dayCounts || typeof dayCounts !== "object") return new Map();
   return new Map(
