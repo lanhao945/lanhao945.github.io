@@ -51,17 +51,17 @@ test("预告时长固定：新增内容不改变时长、落点与曲线", () =>
   assert.equal(after.landingScroll, before.landingScroll);
   assert.deepEqual(
     [
-      teaserProgress(0.3, after.cruiseRatio),
-      teaserProgress(0.85, after.cruiseRatio),
+      teaserProgress(0.3, after.approachEase),
+      teaserProgress(0.85, after.approachEase),
     ],
     [
-      teaserProgress(0.3, before.cruiseRatio),
-      teaserProgress(0.85, before.cruiseRatio),
+      teaserProgress(0.3, before.approachEase),
+      teaserProgress(0.85, before.approachEase),
     ]
   );
 });
 
-test("恒速段速度 = 位移 ÷ 有效时长", () => {
+test("起步略快：初速约为该段平均速度的 approachEase 倍", () => {
   const plan = planTeaser({
     stations: stations([
       [2012, 0],
@@ -69,28 +69,74 @@ test("恒速段速度 = 位移 ÷ 有效时长", () => {
     ]),
     columnPitch: 352,
   });
-  const effectiveMs =
-    plan.durationMs * (plan.cruiseRatio + (1 - plan.cruiseRatio) / 2);
+  const approachMs = plan.durationMs * (1 - plan.settleRatio);
+  const average = plan.apexScroll / (approachMs / 1000);
+  const initial = average * plan.approachEase;
 
-  assert.ok(
-    Math.abs(plan.cruiseSpeed - plan.distance / (effectiveMs / 1000)) < 1e-9
-  );
-  // 当前数据下的量级：约 150-350 px/s
-  assert.ok(plan.cruiseSpeed > 100 && plan.cruiseSpeed < 400);
+  assert.ok(initial > average);
+  assert.ok(initial < average * 2); // 略快，不是弹射
 });
 
-test("位移曲线：恒速段线性、末段减速、终点归一", () => {
-  const ratio = TEASER_DEFAULTS.cruiseRatio;
-  const quarterSpeed = teaserProgress(0.25, ratio) / 0.25;
-  const halfSpeed = teaserProgress(0.45, ratio) / 0.45;
+test("位移曲线：起步略快、全程单调减速、终点归一", () => {
+  const ease = TEASER_DEFAULTS.approachEase;
+  const step = (a, b) => teaserProgress(b, ease) - teaserProgress(a, ease);
 
-  assert.ok(Math.abs(quarterSpeed - halfSpeed) < 1e-9); // 恒速段：单位进度位移相同
-  assert.equal(teaserProgress(0, ratio), 0);
-  assert.equal(teaserProgress(1, ratio), 1);
-  assert.ok(teaserProgress(0.9, ratio) < teaserProgress(1, ratio));
-  const tailSpeed =
-    (teaserProgress(1, ratio) - teaserProgress(0.95, ratio)) / 0.05;
-  assert.ok(tailSpeed < halfSpeed); // 末段比恒速段慢
+  assert.equal(teaserProgress(0, ease), 0);
+  assert.equal(teaserProgress(1, ease), 1);
+
+  const speeds = [];
+  for (let i = 0; i < 20; i += 1) speeds.push(step(i / 20, (i + 1) / 20));
+  for (let i = 1; i < speeds.length; i += 1) {
+    assert.ok(speeds[i] < speeds[i - 1]); // 单调减速，没有匀速段
+  }
+  assert.ok(speeds[0] > speeds.at(-1) * 3);
+});
+
+test("预告位移：过冲后回弹落定，全程没有停顿段", () => {
+  const options = {
+    distance: 412,
+    overshoot: 16,
+    approachEase: TEASER_DEFAULTS.approachEase,
+    settleRatio: TEASER_DEFAULTS.settleRatio,
+  };
+  const at = p => teaserWalk(p, options);
+
+  assert.equal(at(0), 0);
+  assert.equal(at(1), 412);
+
+  const samples = Array.from({ length: 101 }, (_, i) => at(i / 100));
+  const apex = Math.max(...samples);
+  assert.ok(Math.abs(apex - 428) < 1.5);
+
+  const apexIndex = samples.indexOf(apex);
+  for (let i = 1; i <= apexIndex; i += 1) {
+    assert.ok(samples[i] >= samples[i - 1]); // 单调逼近
+  }
+  for (let i = apexIndex + 1; i < samples.length; i += 1) {
+    assert.ok(samples[i] <= samples[i - 1]); // 单调回弹
+  }
+
+  // 没有任何"静止段"：每 1% 进度的位移都大于 0（不会停一下再动）
+  for (let i = 1; i < samples.length; i += 1) {
+    assert.ok(Math.abs(samples[i] - samples[i - 1]) > 0.02);
+  }
+});
+
+test("预告位移：折返点与终点速度为 0", () => {
+  const options = { distance: 412, overshoot: 16 };
+  const at = p => teaserWalk(p, options);
+  const step = (a, b) => at(b) - at(a);
+
+  const startStep = Math.abs(step(0, 0.01)); // 起步（设计上略快）
+  const midStep = Math.abs(step(0.4, 0.41)); // 中段
+  const intoApex = Math.abs(step(0.75, 0.77)); // 逼近折返点
+  const outOfApex = Math.abs(step(0.79, 0.81)); // 回弹起步
+  const endStep = Math.abs(step(0.99, 1)); // 落定
+
+  assert.ok(startStep > midStep); // 起步略快
+  assert.ok(midStep > intoApex); // 单调减速
+  assert.ok(outOfApex < midStep); // 折返处速度小
+  assert.ok(endStep < midStep / 2); // 终点速度趋近 0
 });
 
 test("站点不足或没有可用落点时退化为最后一站，不报错", () => {
@@ -100,16 +146,14 @@ test("站点不足或没有可用落点时退化为最后一站，不报错", ()
   });
   assert.equal(single.landingIndex, 0);
   assert.equal(single.landingScroll, 40);
-  assert.ok(single.cruiseSpeed > 0);
 
   const empty = planTeaser({ stations: [], columnPitch: 352 });
   assert.equal(empty.landingIndex, -1);
   assert.equal(empty.distance, 0);
-  assert.equal(empty.cruiseSpeed, 0);
   assert.equal(empty.durationMs, TEASER_DEFAULTS.durationMs);
 });
 
-test("预告自带过冲与回弹参数，时长为固定 1.8s", () => {
+test("预告自带过冲参数，时长固定 1.8s", () => {
   const plan = planTeaser({
     stations: stations([[2018, 412]]),
     columnPitch: 352,
@@ -133,54 +177,4 @@ test("脏输入被归一化，不抛错", () => {
 
   assert.equal(plan.landingIndex, 1);
   assert.equal(plan.landingScroll, 412);
-});
-
-test("预告位移：过冲后回弹落定，全程没有停顿段", () => {
-  const options = {
-    distance: 412,
-    overshoot: 10,
-    cruiseRatio: TEASER_DEFAULTS.cruiseRatio,
-    settleRatio: TEASER_DEFAULTS.settleRatio,
-  };
-  const at = p => teaserWalk(p, options);
-
-  assert.equal(at(0), 0);
-  assert.equal(at(1), 412);
-
-  // 采样：先增后减，且峰值 ≈ distance + overshoot
-  const samples = Array.from({ length: 101 }, (_, i) => at(i / 100));
-  const apex = Math.max(...samples);
-  assert.ok(Math.abs(apex - 422) < 1.5);
-
-  const apexIndex = samples.indexOf(apex);
-  for (let i = 1; i <= apexIndex; i += 1) {
-    assert.ok(samples[i] >= samples[i - 1]); // 单调逼近
-  }
-  for (let i = apexIndex + 1; i < samples.length; i += 1) {
-    assert.ok(samples[i] <= samples[i - 1]); // 单调回弹
-  }
-
-  // 没有任何"静止段"：每 1% 进度的位移都大于 0（不会停一下再动）
-  for (let i = 1; i < samples.length; i += 1) {
-    assert.ok(Math.abs(samples[i] - samples[i - 1]) > 0.02);
-  }
-});
-
-test("预告位移：过冲折返点与终点速度为 0（起点是设计上的立即起笔）", () => {
-  const options = { distance: 412, overshoot: 10 };
-  const at = p => teaserWalk(p, options);
-  const step = (a, b) => at(b) - at(a);
-
-  const cruiseStep = Math.abs(step(0.2, 0.21)); // 恒速段步长
-  const intoApex = Math.abs(step(0.79, 0.81)); // 逼近过冲点
-  const outOfApex = Math.abs(step(0.83, 0.85)); // 回弹起步
-  const endStep = Math.abs(step(0.99, 1));
-
-  assert.ok(intoApex < cruiseStep / 2);
-  assert.ok(outOfApex < cruiseStep / 2);
-  assert.ok(endStep < cruiseStep / 2);
-
-  // 起点立即起笔：首段已是恒速（与恒速段步长同量级）
-  const startStep = Math.abs(step(0, 0.01));
-  assert.ok(startStep > cruiseStep / 3);
 });

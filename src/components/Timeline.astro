@@ -848,7 +848,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
     let moveFromBand = 0;
     let moveToBand = 0;
     let moveDuration = 0;
-    let moveCruiseRatio: number = TEASER_DEFAULTS.cruiseRatio;
+    let moveApproachEase: number = TEASER_DEFAULTS.approachEase;
     let moveSettleRatio: number = TEASER_DEFAULTS.settleRatio;
     let moveDistance = 0;
     let moveOvershoot = 0;
@@ -937,7 +937,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
       moveFromBand = bandTrackX;
       moveToBand = landingBand;
       moveDuration = plan.durationMs;
-      moveCruiseRatio = plan.cruiseRatio;
+      moveApproachEase = plan.approachEase;
       moveSettleRatio = plan.settleRatio;
       moveDistance = plan.distance;
       moveOvershoot = plan.overshootPx;
@@ -994,7 +994,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
       moveFromBand = bandTrackX;
       moveToBand = band ?? bandTrackX;
       moveDuration = SETTLE_MS;
-      moveCruiseRatio = 1;
+      moveApproachEase = 1;
       moveSettleRatio = 0.05;
       moveDistance = Math.abs(moveToScroll - moveFromScroll);
       moveOvershoot = 0; // 接管吸附：不过冲
@@ -1027,7 +1027,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
           : teaserWalk(progress, {
               distance: moveDistance,
               overshoot: moveOvershoot,
-              cruiseRatio: moveCruiseRatio,
+              approachEase: moveApproachEase,
               settleRatio: moveSettleRatio,
             });
 
