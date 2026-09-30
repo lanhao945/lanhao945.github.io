@@ -1,100 +1,110 @@
 /**
- * 首页时间轴巡航的节奏策略（纯函数，不依赖 DOM）。
+ * 首页时间轴"开场预告"的节奏策略（纯函数，不依赖 DOM）。
  *
- * 巡航 = 匀速滑行 + 每站停留：
- * - 站点由"有卡片的年份"决定；只有贡献、没有卡片的年份只作为滑行区间；
- * - 每站停留由该站自身数据推出：条目越多停越久（收益递减并封顶），
- *   与上一站的真实年份间隔达到阈值时额外给一个"静默拍"；
- * - 滑行速度与内容总量无关：新增内容只增加总时长，不会提高速度。
+ * 与上一版"到站式巡航"的区别：不再有站点与停留 —— 只有一次连续滑行
+ * （前段恒速、末段缓出）落在一个构图完整的列上，随后交还控制权；
+ * 预告时长固定，与内容总量无关。
  */
 
-export const TOUR_DEFAULTS = Object.freeze({
-  /** 每站基础停留（ms） */
-  baseDwellMs: 900,
-  /** 每多一条记录增加的停留（ms） */
-  itemStepMs: 450,
-  /** 条目加成封顶（条） */
-  extraItemCap: 3,
-  /** 真实年份间隔达到该值时给一个静默拍（年） */
-  quietGapYears: 4,
-  /** 静默拍时长（ms） */
-  quietBonusMs: 400,
-  /** 单站数据停留的下限 / 上限（ms） */
-  minDwellMs: 800,
-  maxDwellMs: 2600,
-  /** 终章在最后一站额外定格（ms） */
-  finaleHoldMs: 600,
-  /** 站间滑行速度（px/s） */
-  glideSpeed: 240,
+export const TEASER_DEFAULTS = Object.freeze({
+  /** 起笔延迟（ms）：等首屏入场动画起势，但不再制造数秒死屏 */
+  startDelayMs: 150,
+  /** 预告总时长（ms）：固定值，与内容总量无关 */
+  durationMs: 2750,
+  /** 巡航占比：前 70% 恒速，后 30% 匀减速到 0 */
+  cruiseRatio: 0.7,
+  /** 停稳后多久轻推一次（ms） */
+  nudgeDelayMs: 1200,
+  /** 轻推幅度（px） */
+  nudgeDistancePx: 14,
+  /** 轻推单程时长（ms）：去 + 回 */
+  nudgeHalfMs: 250,
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-/** 归一化站点：保留可用的 year/items，按年份升序排列。 */
+/** 归一化站点：保留可用的 year/targetScroll，按年份升序。 */
 function normalizeStations(stations) {
   if (!Array.isArray(stations)) return [];
   return stations
     .map(station => ({
       year: Number(station?.year),
-      items: Math.max(0, Math.round(Number(station?.items) || 0)),
+      targetScroll: Number(station?.targetScroll) || 0,
     }))
     .filter(station => Number.isFinite(station.year))
     .sort((left, right) => left.year - right.year);
 }
 
 /**
- * @typedef {object} TourStation
- * @property {number} year 站点年份
- * @property {number} items 该年的卡片条目数
- * @property {number} gapYears 与上一站的真实年份间隔（首站为 0）
- * @property {boolean} finale 是否最后一站
- * @property {number} dwellMs 由数据推导的停留时长（不含终章定格）
- * @property {number} finaleHoldMs 终章在最后一站额外定格（非最后一站为 0）
+ * 预告的位移曲线：把线性进度 p 映射成"已走过的距离占比"。
+ * 前 `cruiseRatio` 恒速，之后匀减速到 0；`d(1) === 1`。
  */
+export function teaserProgress(p, cruiseRatio) {
+  const ratio = clamp(Number(cruiseRatio) || 0, 0.05, 0.95);
+  const progress = clamp(Number(p) || 0, 0, 1);
+  const speed = 1 / (ratio + (1 - ratio) / 2); // 归一化后恒速段的相对速度
+  if (progress <= ratio) return speed * progress;
+  const tail = (progress - ratio) / (1 - ratio);
+  return clamp(
+    speed * (ratio + (1 - ratio) * (tail - tail * tail * 0.5)),
+    0,
+    1
+  );
+}
 
 /**
- * 生成巡航计划。
+ * 生成开场预告计划。
  *
- * @param {{ year: number, items: number }[]} stations 有卡片的年份（按时间顺序）
- * @param {Partial<typeof TOUR_DEFAULTS>} [options] 覆盖默认常量（便于实测调参）
- * @returns {{ glideSpeed: number, stations: TourStation[], totalDwellMs: number }}
+ * @param {{
+ *   stations: Array<{ year: number, targetScroll: number }>,
+ *   columnPitch: number,
+ *   fromScroll?: number
+ * }} input stations 为卡片年及其"居中所需 scrollLeft"，columnPitch 为一个列距
+ * @param {Partial<typeof TEASER_DEFAULTS>} [options] 覆盖默认常量（便于实测调参）
  */
-export function planTour(stations, options = {}) {
-  const config = { ...TOUR_DEFAULTS, ...options };
+export function planTeaser(
+  { stations, columnPitch, fromScroll = 0 },
+  options = {}
+) {
+  const config = { ...TEASER_DEFAULTS, ...options };
   const list = normalizeStations(stations);
+  const pitch = Math.max(1, Number(columnPitch) || 0);
+  const start = Number(fromScroll) || 0;
 
-  const planned = list.map((station, index) => {
-    const gapYears = index === 0 ? 0 : station.year - list[index - 1].year;
-    const itemBonus =
-      config.itemStepMs *
-      Math.min(Math.max(station.items - 1, 0), config.extraItemCap);
-    const quietBonus =
-      gapYears >= config.quietGapYears ? config.quietBonusMs : 0;
-    const dwellMs = clamp(
-      config.baseDwellMs + itemBonus + quietBonus,
-      config.minDwellMs,
-      config.maxDwellMs
-    );
-    const finale = index === list.length - 1;
-
-    return {
-      year: station.year,
-      items: station.items,
-      gapYears,
-      finale,
-      /** 由数据推导的停留；不随"是否最后一站"变化 */
-      dwellMs,
-      /** 终章定格：只属于最后一站 */
-      finaleHoldMs: finale ? config.finaleHoldMs : 0,
-    };
-  });
-
-  return {
-    glideSpeed: config.glideSpeed,
-    stations: planned,
-    totalDwellMs: planned.reduce(
-      (sum, station) => sum + station.dwellMs + station.finaleHoldMs,
-      0
-    ),
+  const base = {
+    startDelayMs: config.startDelayMs,
+    durationMs: config.durationMs,
+    cruiseRatio: config.cruiseRatio,
+    nudgeDelayMs: config.nudgeDelayMs,
+    nudgeDistancePx: config.nudgeDistancePx,
+    nudgeHalfMs: config.nudgeHalfMs,
   };
+
+  if (list.length === 0) {
+    return {
+      ...base,
+      landingIndex: -1,
+      landingScroll: start,
+      distance: 0,
+      cruiseSpeed: 0,
+    };
+  }
+
+  // 落点：第一个"居中位移至少一个列距"的卡片年（最左几站常被夹到 0，不适合当落点）
+  let landingIndex = list.length - 1;
+  for (let index = 0; index < list.length; index += 1) {
+    if (Math.abs(list[index].targetScroll - start) >= pitch) {
+      landingIndex = index;
+      break;
+    }
+  }
+
+  const landingScroll = list[landingIndex].targetScroll;
+  const distance = Math.abs(landingScroll - start);
+  // 位移 = v·T·(r + (1-r)/2)  ⇒  v = 位移 / 有效时长
+  const effectiveMs =
+    config.durationMs * (config.cruiseRatio + (1 - config.cruiseRatio) / 2);
+  const cruiseSpeed = effectiveMs > 0 ? distance / (effectiveMs / 1000) : 0;
+
+  return { ...base, landingIndex, landingScroll, distance, cruiseSpeed };
 }
