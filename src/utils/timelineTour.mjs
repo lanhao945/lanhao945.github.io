@@ -14,9 +14,9 @@ export const TEASER_DEFAULTS = Object.freeze({
   /** 巡航占比：前 70% 恒速，其余减速 */
   cruiseRatio: 0.7,
   /** 落点前的过冲量（px）：回弹并入同一次运动，避免"停住后再来一下" */
-  overshootPx: 10,
-  /** 末段用于回弹落定的时长占比 */
-  settleRatio: 0.18,
+  overshootPx: 16,
+  /** 末段用于回弹落定的时长占比（过冲变大时略放宽，保持回弹柔和） */
+  settleRatio: 0.22,
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
