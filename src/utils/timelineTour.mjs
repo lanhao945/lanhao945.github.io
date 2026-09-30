@@ -10,15 +10,13 @@ export const TEASER_DEFAULTS = Object.freeze({
   /** 起笔延迟（ms）：等首屏入场动画起势，但不再制造数秒死屏 */
   startDelayMs: 150,
   /** 预告总时长（ms）：固定值，与内容总量无关 */
-  durationMs: 2750,
-  /** 巡航占比：前 70% 恒速，后 30% 匀减速到 0 */
+  durationMs: 1800,
+  /** 巡航占比：前 70% 恒速，其余减速 */
   cruiseRatio: 0.7,
-  /** 停稳后多久轻推一次（ms） */
-  nudgeDelayMs: 1200,
-  /** 轻推幅度（px） */
-  nudgeDistancePx: 14,
-  /** 轻推往返总时长（ms）：余弦摆动一次，起/折返/止速度都为 0 */
-  nudgeDurationMs: 650,
+  /** 落点前的过冲量（px）：回弹并入同一次运动，避免"停住后再来一下" */
+  overshootPx: 10,
+  /** 末段用于回弹落定的时长占比 */
+  settleRatio: 0.18,
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -40,14 +38,29 @@ function normalizeStations(stations) {
  * 前 `cruiseRatio` 恒速，之后匀减速到 0；`d(1) === 1`。
  */
 /**
- * 轻推的位移：一次余弦摆动 `A·(1−cos 2πp)/2`。
- * p=0 与 p=1 时位移为 0、速度为 0；p=0.5 到达最远点（同样速度为 0），
- * 因此起点与终点都不存在速度突变（这正是"生硬"的来源）。
+ * 预告的完整位移（px）：巡航 + 减速 → 过冲到 `distance + overshoot`
+ * → 末段平滑回弹落定到 `distance`。
+ *
+ * - 起、折返（过冲最远处）、止三处速度为 0，全段速度连续；
+ * - 回弹与滑行是同一次运动，不会出现"停住之后再动一下"。
  */
-export function nudgeOffset(progress, distance) {
+export function teaserWalk(
+  progress,
+  { distance, overshoot = 0, cruiseRatio = 0.7, settleRatio = 0.18 }
+) {
+  const total = Math.max(0, Number(distance) || 0);
+  const extra = Math.max(0, Number(overshoot) || 0);
+  const approachEnd = 1 - clamp(Number(settleRatio) || 0.18, 0.05, 0.5);
   const p = clamp(Number(progress) || 0, 0, 1);
-  const amplitude = Number(distance) || 0;
-  return amplitude * (1 - Math.cos(2 * Math.PI * p)) * 0.5;
+  const apex = total + extra;
+
+  if (p < approachEnd) {
+    return apex * teaserProgress(p / approachEnd, cruiseRatio);
+  }
+
+  const q = clamp((p - approachEnd) / (1 - approachEnd), 0, 1);
+  const eased = q * q * (3 - 2 * q); // smoothstep：两端速度为 0
+  return apex + (total - apex) * eased;
 }
 
 export function teaserProgress(p, cruiseRatio) {
@@ -86,9 +99,8 @@ export function planTeaser(
     startDelayMs: config.startDelayMs,
     durationMs: config.durationMs,
     cruiseRatio: config.cruiseRatio,
-    nudgeDelayMs: config.nudgeDelayMs,
-    nudgeDistancePx: config.nudgeDistancePx,
-    nudgeDurationMs: config.nudgeDurationMs,
+    overshootPx: config.overshootPx,
+    settleRatio: config.settleRatio,
   };
 
   if (list.length === 0) {
@@ -117,5 +129,14 @@ export function planTeaser(
     config.durationMs * (config.cruiseRatio + (1 - config.cruiseRatio) / 2);
   const cruiseSpeed = effectiveMs > 0 ? distance / (effectiveMs / 1000) : 0;
 
-  return { ...base, landingIndex, landingScroll, distance, cruiseSpeed };
+  return {
+    ...base,
+    landingIndex,
+    landingScroll,
+    distance,
+    apexScroll:
+      landingScroll +
+      Math.sign(landingScroll - start || 1) * config.overshootPx,
+    cruiseSpeed,
+  };
 }

@@ -3,9 +3,9 @@ import test from "node:test";
 
 import {
   TEASER_DEFAULTS,
-  nudgeOffset,
   planTeaser,
   teaserProgress,
+  teaserWalk,
 } from "./timelineTour.mjs";
 
 const stations = list =>
@@ -109,16 +109,16 @@ test("站点不足或没有可用落点时退化为最后一站，不报错", ()
   assert.equal(empty.durationMs, TEASER_DEFAULTS.durationMs);
 });
 
-test("预告包含一次性轻推参数，且只有一组", () => {
+test("预告自带过冲与回弹参数，时长为固定 1.8s", () => {
   const plan = planTeaser({
     stations: stations([[2018, 412]]),
     columnPitch: 352,
   });
 
-  assert.equal(plan.nudgeDelayMs, TEASER_DEFAULTS.nudgeDelayMs);
-  assert.equal(plan.nudgeDistancePx, TEASER_DEFAULTS.nudgeDistancePx);
-  assert.equal(plan.nudgeDurationMs, TEASER_DEFAULTS.nudgeDurationMs);
-  assert.equal(typeof plan.nudgeDistancePx, "number");
+  assert.equal(plan.durationMs, 1800);
+  assert.equal(plan.overshootPx, TEASER_DEFAULTS.overshootPx);
+  assert.equal(plan.settleRatio, TEASER_DEFAULTS.settleRatio);
+  assert.ok(plan.apexScroll > plan.landingScroll);
 });
 
 test("脏输入被归一化，不抛错", () => {
@@ -135,18 +135,52 @@ test("脏输入被归一化，不抛错", () => {
   assert.equal(plan.landingScroll, 412);
 });
 
-test("轻推曲线：两端与折返点速度为 0（不产生速度突变）", () => {
-  const distance = 14;
-  const at = p => nudgeOffset(p, distance);
+test("预告位移：过冲后回弹落定，全程没有停顿段", () => {
+  const options = {
+    distance: 412,
+    overshoot: 10,
+    cruiseRatio: TEASER_DEFAULTS.cruiseRatio,
+    settleRatio: TEASER_DEFAULTS.settleRatio,
+  };
+  const at = p => teaserWalk(p, options);
 
   assert.equal(at(0), 0);
-  assert.ok(Math.abs(at(0.5) - distance) < 1e-9); // 折返到最远点
-  assert.ok(Math.abs(at(1)) < 1e-9);
+  assert.equal(at(1), 412);
 
-  // 起步/收尾的位移增量远小于最快段（p≈0.25 附近），说明两端平滑
-  const fastestStep = Math.abs(at(0.27) - at(0.25));
-  const startStep = Math.abs(at(0.02) - at(0));
-  const endStep = Math.abs(at(1) - at(0.98));
-  assert.ok(startStep < fastestStep / 5);
-  assert.ok(endStep < fastestStep / 5);
+  // 采样：先增后减，且峰值 ≈ distance + overshoot
+  const samples = Array.from({ length: 101 }, (_, i) => at(i / 100));
+  const apex = Math.max(...samples);
+  assert.ok(Math.abs(apex - 422) < 1.5);
+
+  const apexIndex = samples.indexOf(apex);
+  for (let i = 1; i <= apexIndex; i += 1) {
+    assert.ok(samples[i] >= samples[i - 1]); // 单调逼近
+  }
+  for (let i = apexIndex + 1; i < samples.length; i += 1) {
+    assert.ok(samples[i] <= samples[i - 1]); // 单调回弹
+  }
+
+  // 没有任何"静止段"：每 1% 进度的位移都大于 0（不会停一下再动）
+  for (let i = 1; i < samples.length; i += 1) {
+    assert.ok(Math.abs(samples[i] - samples[i - 1]) > 0.02);
+  }
+});
+
+test("预告位移：过冲折返点与终点速度为 0（起点是设计上的立即起笔）", () => {
+  const options = { distance: 412, overshoot: 10 };
+  const at = p => teaserWalk(p, options);
+  const step = (a, b) => at(b) - at(a);
+
+  const cruiseStep = Math.abs(step(0.2, 0.21)); // 恒速段步长
+  const intoApex = Math.abs(step(0.79, 0.81)); // 逼近过冲点
+  const outOfApex = Math.abs(step(0.83, 0.85)); // 回弹起步
+  const endStep = Math.abs(step(0.99, 1));
+
+  assert.ok(intoApex < cruiseStep / 2);
+  assert.ok(outOfApex < cruiseStep / 2);
+  assert.ok(endStep < cruiseStep / 2);
+
+  // 起点立即起笔：首段已是恒速（与恒速段步长同量级）
+  const startStep = Math.abs(step(0, 0.01));
+  assert.ok(startStep > cruiseStep / 3);
 });
