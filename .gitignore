@@ -38,3 +38,4 @@ compose.override.yaml
 # python caches
 __pycache__/
 *.py[cod]
+.codegraph
