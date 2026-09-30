@@ -1,0 +1,51 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+rules:
+  proposal:
+    - 必须包含回滚计划
+    - 说明对现有功能的影响
+    - 列出需要协调的团队
+  specs:
+    - 使用 Given/When/Then 格式编写场景
+    - 优先引用现有模式，避免重复发明
+    - 包含边界条件和异常场景
+  design:
+    - 说明关键技术决策的理由
+    - 列出受影响的文件和模块
+    - 考虑性能和安全影响
+  tasks:
+    - 参考 commit skills, 要求每次提交的颗粒度细
+    - 按模块分组，使用层级编号
+    - 包含必要的测试任务
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
+
+operations:
+  archive:
+    guidance:
+      - "归档目录移动完成后必须立即创建 Git 提交；提交范围只包含本次归档移动的 Change 目录、同步产生的主 specs 变更及必要的 OpenSpec 配置变更。"
+      - "提交信息使用 Conventional Commits：docs(openspec): archive <change-name>；不得夹带无关工作区文件或其他未完成改动。"
+      - "提交前运行 git status 和 git diff --cached 复核暂存内容；提交失败时立即停止并显式报告，不得把归档标记为成功。"
+      - "生成的提交末尾必须添加 Assisted-by: Codex，并默认只提交到本地仓库，不自动推送。"
