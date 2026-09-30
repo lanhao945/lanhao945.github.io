@@ -28,11 +28,12 @@ const activitySourceModules = import.meta.glob(
 const mergedActivityDays = mergeActivitySources(activitySourceModules);
 
 /*
- * 列模型：卡片年各占一整列；连续无卡片年份只要区间内有贡献，就合并成一个
- * 整列宽的区间列（用水平均值带表达，页面上不显示任何文字）；全零区间保持
- * 最短宽度。竖屏不展示活动场，因此不受影响。
+ * 列模型：占位只由卡片年决定 —— 区间不额外占列，卡片间距因此处处一致。
+ * 连续无卡片的年份记成区间：区间内有贡献时，活动场会在那条标准间隙里画一条
+ * 水平均值带；页面上不显示任何跨度文字（信息走读屏文本）。竖屏不展示活动场，
+ * 因此不受影响。
  */
-const { slots } = buildEvidenceSlots(
+const { slots, gaps } = buildEvidenceSlots(
   columns.map(column => column.year),
   mergedActivityDays
 );
@@ -40,13 +41,14 @@ const columnByYear = new Map(columns.map(column => [column.year, column]));
 const slotColumns = slots.map((slot, index) => ({
   slot,
   index,
-  column: slot.kind === "cards" ? (columnByYear.get(slot.year) ?? null) : null,
-  label:
-    slot.kind === "stretch"
-      ? `${slot.from === slot.to ? slot.from : `${slot.from}–${slot.to}`} · 日均 ${slot.meanPerDay.toFixed(1)} 次 · 累计 ${slot.total}`
-      : null,
+  column: columnByYear.get(slot.year) ?? null,
 }));
-const activityField = buildActivityField(mergedActivityDays, slots);
+const stretchNotes = gaps
+  .filter(gap => gap.meanPerDay > 0)
+  .map(gap => ({
+    label: `${gap.from === gap.to ? gap.from : `${gap.from}–${gap.to}`} · 日均 ${gap.meanPerDay.toFixed(1)} 次 · 累计 ${gap.total}`,
+  }));
+const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
 ---
 
 <section class="timeline" data-timeline aria-label={t.timeline.title}>
@@ -115,28 +117,8 @@ const activityField = buildActivityField(mergedActivityDays, slots);
 
             {/* 纯装饰：沿轴线流动的光带（横屏生效；脚本接管后与自动滚动同速率） */}
             <li class="timeline-flow" aria-hidden="true" />
-            {slotColumns.map(({ slot, index, column, label }) => {
-              if (slot.kind === "stretch") {
-                return (
-                  <li
-                    class="timeline-year"
-                    data-year={slot.from}
-                    data-evidence="stretch"
-                    style={`--tl-col: ${index + 1}`}
-                    aria-label={label}
-                    title={label}
-                  >
-                    <span class="timeline-year-empty" aria-hidden="true" />
-                  </li>
-                );
-              }
-
-              if (!column) {
-                // 卡片槽一定有对应列；缺列时显式不渲染，避免静默错位
-                return null;
-              }
-
-              return (
+            {slotColumns.map(({ slot, index, column }) =>
+              column ? (
                 <li
                   class="timeline-year"
                   id={`year-${slot.year}`}
@@ -162,8 +144,12 @@ const activityField = buildActivityField(mergedActivityDays, slots);
                     ) : null
                   )}
                 </li>
-              );
-            })}
+              ) : null
+            )}
+            {/* 区间信息：不显示可见文字，只给读屏 */}
+            {stretchNotes.map(note => (
+              <li class="sr-only">{note.label}</li>
+            ))}
           </ol>
         </div>
       </div>
@@ -190,10 +176,9 @@ const activityField = buildActivityField(mergedActivityDays, slots);
     --tl-flow-color: color-mix(in srgb, var(--color-accent) 60%, #fff);
   }
 
-  /* 活动场、光带与区间列的轴线只在横屏出现；竖屏不展示 GitHub 活动。 */
+  /* 活动场与光带只在横屏出现；竖屏不展示 GitHub 活动。 */
   .timeline-activity,
-  .timeline-flow,
-  .timeline-year-empty {
+  .timeline-flow {
     display: none;
   }
 
@@ -483,8 +468,7 @@ const activityField = buildActivityField(mergedActivityDays, slots);
     }
 
     /* 走过的年份：轴线点亮成暖色，越靠近当前站越亮；不随时间衰减 */
-    .timeline-year[data-tour="passed"] .timeline-year-dot::after,
-    .timeline-year[data-tour="passed"] .timeline-year-empty::after {
+    .timeline-year[data-tour="passed"] .timeline-year-dot::after {
       background: color-mix(
         in srgb,
         var(--color-accent) 65%,
@@ -651,26 +635,6 @@ const activityField = buildActivityField(mergedActivityDays, slots);
       top: 50%;
       width: calc(var(--tl-column) + var(--tl-gap) - 0.5rem);
       height: 1px;
-      background: var(--color-border);
-    }
-
-    /* 无卡片但有贡献的年份：保留整列宽度，只画轴线，让活动场的坡度被看见 */
-    .timeline-year-empty {
-      display: block;
-      position: relative;
-      grid-column: var(--tl-col);
-      grid-row: 2;
-      align-self: center;
-      block-size: 1px;
-    }
-
-    .timeline-year-empty::after {
-      content: "";
-      position: absolute;
-      inset-inline-start: 0;
-      top: 50%;
-      inline-size: calc(100% + var(--tl-gap));
-      block-size: 1px;
       background: var(--color-border);
     }
 
