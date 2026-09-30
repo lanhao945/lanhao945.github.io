@@ -17,8 +17,8 @@ export const TEASER_DEFAULTS = Object.freeze({
   nudgeDelayMs: 1200,
   /** 轻推幅度（px） */
   nudgeDistancePx: 14,
-  /** 轻推单程时长（ms）：去 + 回 */
-  nudgeHalfMs: 250,
+  /** 轻推往返总时长（ms）：余弦摆动一次，起/折返/止速度都为 0 */
+  nudgeDurationMs: 650,
 });
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -39,6 +39,17 @@ function normalizeStations(stations) {
  * 预告的位移曲线：把线性进度 p 映射成"已走过的距离占比"。
  * 前 `cruiseRatio` 恒速，之后匀减速到 0；`d(1) === 1`。
  */
+/**
+ * 轻推的位移：一次余弦摆动 `A·(1−cos 2πp)/2`。
+ * p=0 与 p=1 时位移为 0、速度为 0；p=0.5 到达最远点（同样速度为 0），
+ * 因此起点与终点都不存在速度突变（这正是"生硬"的来源）。
+ */
+export function nudgeOffset(progress, distance) {
+  const p = clamp(Number(progress) || 0, 0, 1);
+  const amplitude = Number(distance) || 0;
+  return amplitude * (1 - Math.cos(2 * Math.PI * p)) * 0.5;
+}
+
 export function teaserProgress(p, cruiseRatio) {
   const ratio = clamp(Number(cruiseRatio) || 0, 0.05, 0.95);
   const progress = clamp(Number(p) || 0, 0, 1);
@@ -77,7 +88,7 @@ export function planTeaser(
     cruiseRatio: config.cruiseRatio,
     nudgeDelayMs: config.nudgeDelayMs,
     nudgeDistancePx: config.nudgeDistancePx,
-    nudgeHalfMs: config.nudgeHalfMs,
+    nudgeDurationMs: config.nudgeDurationMs,
   };
 
   if (list.length === 0) {

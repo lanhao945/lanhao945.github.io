@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   TEASER_DEFAULTS,
+  nudgeOffset,
   planTeaser,
   teaserProgress,
 } from "./timelineTour.mjs";
@@ -116,7 +117,7 @@ test("预告包含一次性轻推参数，且只有一组", () => {
 
   assert.equal(plan.nudgeDelayMs, TEASER_DEFAULTS.nudgeDelayMs);
   assert.equal(plan.nudgeDistancePx, TEASER_DEFAULTS.nudgeDistancePx);
-  assert.equal(plan.nudgeHalfMs, TEASER_DEFAULTS.nudgeHalfMs);
+  assert.equal(plan.nudgeDurationMs, TEASER_DEFAULTS.nudgeDurationMs);
   assert.equal(typeof plan.nudgeDistancePx, "number");
 });
 
@@ -132,4 +133,20 @@ test("脏输入被归一化，不抛错", () => {
 
   assert.equal(plan.landingIndex, 1);
   assert.equal(plan.landingScroll, 412);
+});
+
+test("轻推曲线：两端与折返点速度为 0（不产生速度突变）", () => {
+  const distance = 14;
+  const at = p => nudgeOffset(p, distance);
+
+  assert.equal(at(0), 0);
+  assert.ok(Math.abs(at(0.5) - distance) < 1e-9); // 折返到最远点
+  assert.ok(Math.abs(at(1)) < 1e-9);
+
+  // 起步/收尾的位移增量远小于最快段（p≈0.25 附近），说明两端平滑
+  const fastestStep = Math.abs(at(0.27) - at(0.25));
+  const startStep = Math.abs(at(0.02) - at(0));
+  const endStep = Math.abs(at(1) - at(0.98));
+  assert.ok(startStep < fastestStep / 5);
+  assert.ok(endStep < fastestStep / 5);
 });

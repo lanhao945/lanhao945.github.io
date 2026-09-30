@@ -683,6 +683,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
   } from "@/utils/githubActivity.mjs";
   import {
     TEASER_DEFAULTS,
+    nudgeOffset,
     planTeaser,
     teaserProgress,
   } from "@/utils/timelineTour.mjs";
@@ -852,7 +853,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
     let moveCruiseRatio: number = TEASER_DEFAULTS.cruiseRatio;
     let nudgeFrom = 0;
     let nudgeDistance = 0;
-    let nudgeHalfMs = TEASER_DEFAULTS.nudgeHalfMs;
+    let nudgeDuration = TEASER_DEFAULTS.nudgeDurationMs;
     let trailHead = -1; // 已点亮的轨迹到第几列
 
     const cancelFlowTicks = () => {
@@ -903,7 +904,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
       if (!horizontal.matches || reduceMotion.matches) return;
       nudgeFrom = viewport.scrollLeft;
       nudgeDistance = TEASER_DEFAULTS.nudgeDistancePx;
-      nudgeHalfMs = TEASER_DEFAULTS.nudgeHalfMs;
+      nudgeDuration = TEASER_DEFAULTS.nudgeDurationMs;
       flowElapsed = 0;
       flowLastFrame = 0;
       flowPhase = "nudge";
@@ -1056,11 +1057,10 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
         }
       } else if (flowPhase === "nudge") {
         flowElapsed += delta;
-        const total = nudgeHalfMs * 2;
-        const progress = total > 0 ? Math.min(1, flowElapsed / total) : 1;
-        const out = progress <= 0.5 ? progress * 2 : (1 - progress) * 2;
-        const eased = 1 - (1 - out) ** 2; // 去程缓出、回程缓出
-        viewport.scrollLeft = nudgeFrom + nudgeDistance * eased;
+        const progress =
+          nudgeDuration > 0 ? Math.min(1, flowElapsed / nudgeDuration) : 1;
+        // 单次余弦摆动：起/折返/止速度都为 0，避免"停住后突然一动"的生硬
+        viewport.scrollLeft = nudgeFrom + nudgeOffset(progress, nudgeDistance);
 
         if (progress >= 1) {
           viewport.scrollLeft = nudgeFrom;
