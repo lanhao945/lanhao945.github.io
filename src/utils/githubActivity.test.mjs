@@ -13,8 +13,11 @@ import {
   parseTranslateY,
 } from "./githubActivity.mjs";
 
-/** 卡片年简写：列模型里"一年一列"的最小形态。 */
-const cardSlots = (...years) => years.map(year => ({ kind: "cards", year }));
+/** 卡片年列模型：没有跨年区间时的最小形态（区间不占列）。 */
+const cardModel = (...years) => ({
+  slots: years.map(year => ({ kind: "cards", year })),
+  gaps: [],
+});
 
 test("sums nested activity source files by date", () => {
   const merged = mergeActivitySources({
@@ -166,7 +169,7 @@ test("only produces an aligned viewBox when the layout can be measured", () => {
 });
 
 test("maps anchored years to equal columns and missing years to the gap", () => {
-  const segments = buildActivitySegments(cardSlots(2020, 2024));
+  const segments = buildActivitySegments(cardModel(2020, 2024));
 
   assert.deepEqual(segments, [
     {
@@ -200,7 +203,7 @@ test("maps anchored years to equal columns and missing years to the gap", () => 
 });
 
 test("inserts a bridge segment for adjacent years", () => {
-  const segments = buildActivitySegments(cardSlots(2024, 2025));
+  const segments = buildActivitySegments(cardModel(2024, 2025));
 
   assert.equal(segments.length, 3);
   assert.deepEqual(
@@ -220,7 +223,7 @@ test("builds asymmetric finite SVG fields with the stronger value above the axis
       "2024-06-01": 10,
       "2025-06-01": 5,
     },
-    cardSlots(2024, 2025)
+    cardModel(2024, 2025)
   );
 
   assert.equal(field.width, 210);
@@ -264,7 +267,7 @@ test("keeps adjacent year boundaries continuous across the visual gap", () => {
       "2024-12-31": 10,
       "2025-01-01": 10,
     },
-    cardSlots(2024, 2025)
+    cardModel(2024, 2025)
   );
   const commands = [...field.upperPath.matchAll(/[ML] ([\d.]+) ([\d.]+)/g)].map(
     match => ({ x: Number(match[1]), y: Number(match[2]) })
@@ -290,7 +293,7 @@ test("compresses skipped years into a visible gap segment", () => {
       "2022-06-01": 6,
       "2023-09-01": 7,
     },
-    cardSlots(2020, 2024)
+    cardModel(2020, 2024)
   );
   const gap = field.segments.find(segment => segment.kind === "gap");
 
@@ -300,7 +303,7 @@ test("compresses skipped years into a visible gap segment", () => {
 });
 
 test("returns an empty field when no contribution days exist", () => {
-  const field = buildActivityField({}, cardSlots(2024, 2025));
+  const field = buildActivityField({}, cardModel(2024, 2025));
 
   assert.equal(field.hasData, false);
   assert.equal(field.upperPath, "");
@@ -313,98 +316,79 @@ test("shifts the activity baseline to the measured timeline axis", () => {
   assert.equal(computeActivityViewBox("0 0 870 200", 0.99), "0 -80 870 200");
 });
 
-test("证据占位：有贡献的无卡片区间合并为一列，均值按数据覆盖天数计算", () => {
+test("证据占位：区间不占列，卡片间距保持固定", () => {
   const cardYears = [2012, 2016, 2017, 2018, 2019, 2024, 2025, 2026];
   const days = {};
   for (let year = 2017; year <= 2026; year += 1) days[`${year}-03-01`] = 3;
 
   const { slots, gaps } = buildEvidenceSlots(cardYears, days);
-  const stretch = slots.find(slot => slot.kind === "stretch");
 
-  assert.ok(stretch);
   assert.deepEqual(
-    slots.map(slot =>
-      slot.kind === "stretch" ? `stretch:${slot.from}-${slot.to}` : slot.year
-    ),
-    [2012, 2016, 2017, 2018, 2019, "stretch:2020-2023", 2024, 2025, 2026]
+    slots.map(slot => slot.year),
+    cardYears
   );
   assert.deepEqual(
-    [stretch.total, stretch.days, stretch.meanPerDay],
-    [12, 4, 3]
-  );
-  assert.deepEqual(
-    gaps.map(gap => [gap.from, gap.to, gap.years.length]),
-    [[2013, 2015, 3]]
+    gaps.map(gap => [gap.from, gap.to, gap.total, gap.days, gap.meanPerDay]),
+    [
+      [2013, 2015, 0, 0, 0],
+      [2020, 2023, 12, 4, 3],
+    ]
   );
 });
 
-test("证据占位：区间内全部为 0 贡献时只压缩、不产列", () => {
-  const withActivity = buildEvidenceSlots([2016, 2024], {
-    "2021-05-05": 4,
-    "2022-05-05": 2,
-  });
-  const withoutActivity = buildEvidenceSlots([2016, 2024], {});
+test("证据占位：有贡献的区间在活动场里是间隙内的水平带，无贡献的区间只是间隔", () => {
+  const cardYears = [2012, 2016, 2017, 2018, 2019, 2024, 2025, 2026];
+  const days = {};
+  for (let year = 2017; year <= 2026; year += 1) days[`${year}-03-01`] = 3;
+
+  const model = buildEvidenceSlots(cardYears, days);
+  const spanSegments = buildActivitySegments(model).filter(
+    segment => segment.kind === "stretch" || segment.kind === "gap"
+  );
 
   assert.deepEqual(
-    withActivity.slots.map(slot =>
-      slot.kind === "stretch" ? `stretch:${slot.from}-${slot.to}` : slot.year
-    ),
-    [2016, "stretch:2017-2023", 2024]
-  );
-  assert.deepEqual(
-    withoutActivity.slots.map(slot => slot.year),
-    [2016, 2024]
-  );
-  assert.deepEqual(
-    withoutActivity.gaps.map(gap => [gap.from, gap.to]),
-    [[2017, 2023]]
+    spanSegments.map(segment => [
+      segment.kind,
+      segment.xEnd - segment.xStart,
+      segment.meanPerDay ?? null,
+    ]),
+    [
+      ["gap", 10, null],
+      ["stretch", 10, 3],
+    ]
   );
 });
 
-test("证据占位：非法日期与 0 值不参与区间统计", () => {
-  const { slots, gaps } = buildEvidenceSlots([2018, 2019], {
-    "not-a-date": 5,
-    "2020-13-01": 9,
-    "2020-01-01": 0,
-  });
-
-  assert.deepEqual(slots, [
-    { kind: "cards", year: 2018 },
-    { kind: "cards", year: 2019 },
-  ]);
-  assert.deepEqual(gaps, []);
-});
-
-test("证据占位：区间只包含一年时同样占一列", () => {
-  const { slots } = buildEvidenceSlots([2019, 2021], {
+test("证据占位：区间只包含一年时同样落在间隙里", () => {
+  const model = buildEvidenceSlots([2019, 2021], {
     "2020-06-01": 2,
     "2020-06-02": 2,
   });
-  const stretch = slots.find(slot => slot.kind === "stretch");
+  const [gap] = model.gaps;
 
   assert.deepEqual(
-    [stretch.from, stretch.to, stretch.total, stretch.days, stretch.meanPerDay],
+    [gap.from, gap.to, gap.total, gap.days, gap.meanPerDay],
     [2020, 2020, 4, 2, 2]
   );
-  const segment = buildActivitySegments(slots).find(
+  const segment = buildActivitySegments(model).find(
     item => item.kind === "stretch"
   );
-  assert.equal(segment.xEnd - segment.xStart, 100);
+  assert.equal(segment.xEnd - segment.xStart, 10);
 });
 
-test("证据占位：区间列在活动场里是一条水平均值带", () => {
+test("证据占位：活动场用常量高度画出区间均值", () => {
   const days = {};
   for (const year of [2020, 2021]) {
     days[`${year}-01-01`] = 4;
     days[`${year}-01-02`] = 4;
   }
 
-  const { slots } = buildEvidenceSlots([2019, 2024], days);
-  const field = buildActivityField(days, slots);
+  const model = buildEvidenceSlots([2019, 2024], days);
+  const field = buildActivityField(days, model);
   const stretch = field.segments.find(segment => segment.kind === "stretch");
   const levels = stretch.points.map(point => point.intensity);
 
-  assert.equal(stretch.xEnd - stretch.xStart, 100);
+  assert.equal(stretch.xEnd - stretch.xStart, 10);
   assert.equal(stretch.meanPerDay, 4);
   assert.ok(levels.length > 0);
   assert.ok(levels.every(level => level === levels[0]));
@@ -417,20 +401,50 @@ test("证据占位：新增卡片会把区间拆开，剩余年份按新规则�
   const after = buildEvidenceSlots([2019, 2022, 2024], days);
 
   assert.deepEqual(
-    before.slots.map(slot =>
-      slot.kind === "stretch" ? `stretch:${slot.from}-${slot.to}` : slot.year
-    ),
-    [2019, "stretch:2020-2023", 2024]
+    before.gaps.map(gap => [gap.from, gap.to, gap.meanPerDay]),
+    [[2020, 2023, 1]]
   );
   assert.deepEqual(
-    after.slots.map(slot =>
-      slot.kind === "stretch" ? `stretch:${slot.from}-${slot.to}` : slot.year
-    ),
-    [2019, "stretch:2020-2021", 2022, 2024]
+    after.gaps.map(gap => [gap.from, gap.to, gap.meanPerDay]),
+    [
+      [2020, 2021, 1],
+      [2023, 2023, 0],
+    ]
   );
   assert.deepEqual(
-    after.gaps.map(gap => [gap.from, gap.to]),
-    [[2023, 2023]]
+    buildActivitySegments(after)
+      .filter(segment => segment.kind === "stretch")
+      .map(segment => segment.meanPerDay),
+    [1]
+  );
+});
+
+test("证据占位：占位只由卡片年决定，贡献变化不改变列数", () => {
+  const quiet = buildEvidenceSlots([2019, 2024], {});
+  const busy = buildEvidenceSlots([2019, 2024], { "2021-01-01": 9 });
+
+  assert.deepEqual(
+    quiet.slots.map(slot => slot.year),
+    busy.slots.map(slot => slot.year)
+  );
+  assert.equal(quiet.gaps[0].meanPerDay, 0);
+  assert.equal(busy.gaps[0].meanPerDay, 9);
+});
+
+test("证据占位：非法日期与 0 值不参与区间统计", () => {
+  const { slots, gaps } = buildEvidenceSlots([2018, 2020], {
+    "not-a-date": 5,
+    "2019-13-01": 9,
+    "2019-01-01": 0,
+  });
+
+  assert.deepEqual(
+    slots.map(slot => slot.year),
+    [2018, 2020]
+  );
+  assert.deepEqual(
+    gaps.map(gap => [gap.from, gap.to, gap.total, gap.days, gap.meanPerDay]),
+    [[2019, 2019, 0, 1, 0]]
   );
 });
 

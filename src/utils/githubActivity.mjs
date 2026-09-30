@@ -85,91 +85,65 @@ function rangeYears(from, to) {
 /**
  * 把列模型铺成活动场段落（内部 x 单位）：
  * - 卡片年 = 一年一段，占 COLUMN_WIDTH；
- * - 区间列（stretch）= 一段，同样占 COLUMN_WIDTH，并携带区间日均供水平带使用；
- * - 相邻列之间 = 一个最短宽度（GAP_WIDTH）的 bridge / gap 段。
+ * - 相邻卡片年之间 = 一个最短宽度（GAP_WIDTH）的段落：
+ *   相邻年 → bridge；跨年区间有贡献 → stretch（带 meanPerDay，画水平带）；否则 gap。
  *
- * 无效条目会被过滤（调用方只传列模型；不做兜底猜测）。
+ * 区间**不占列**：均值带就画在这条标准间隙里，因此卡片间距处处一致。
  *
- * @param {Array<{kind: "cards", year: number} | {
- *   kind: "stretch", from: number, to: number, years?: number[], meanPerDay?: number
- * }>} slots
+ * @param {{ slots: Array<{year: number}>, gaps: Array<{
+ *   from: number, to: number, years: number[], meanPerDay: number
+ * }> }} model
  */
-export function buildActivitySegments(slots) {
-  const list = (Array.isArray(slots) ? slots : [])
-    .map(slot => {
-      if (slot && slot.kind === "stretch") {
-        const from = Number(slot.from);
-        const to = Number(slot.to ?? from);
-        if (!Number.isInteger(from) || !Number.isInteger(to) || to < from) {
-          return null;
-        }
-        return {
-          kind: "stretch",
-          from,
-          to,
-          years:
-            Array.isArray(slot.years) && slot.years.length > 0
-              ? slot.years.map(Number)
-              : rangeYears(from, to),
-          meanPerDay: Number(slot.meanPerDay) || 0,
-        };
-      }
+export function buildActivitySegments(model) {
+  const slots = Array.isArray(model?.slots) ? model.slots : [];
+  const spans = Array.isArray(model?.gaps) ? model.gaps : [];
+  const spanByFrom = new Map(spans.map(span => [Number(span.from), span]));
 
+  const list = slots
+    .map(slot => {
       const year = Number(slot && slot.year);
-      if (!Number.isInteger(year)) return null;
-      return { kind: "cards", year, years: [year] };
+      return Number.isInteger(year) ? { year } : null;
     })
     .filter(Boolean)
-    .sort(
-      (left, right) =>
-        (left.kind === "stretch" ? left.from : left.year) -
-        (right.kind === "stretch" ? right.from : right.year)
-    );
+    .sort((left, right) => left.year - right.year);
 
   const segments = [];
   let x = 0;
 
   list.forEach((slot, index) => {
-    const startYear = slot.kind === "stretch" ? slot.from : slot.year;
-    const endYear = slot.kind === "stretch" ? slot.to : slot.year;
     const xStart = x;
     const xEnd = x + COLUMN_WIDTH;
-
-    segments.push(
-      slot.kind === "stretch"
-        ? {
-            kind: "stretch",
-            year: null,
-            years: slot.years,
-            startDate: `${startYear}-01-01`,
-            endDate: `${endYear}-12-31`,
-            meanPerDay: slot.meanPerDay,
-            xStart,
-            xEnd,
-          }
-        : {
-            kind: "year",
-            year: startYear,
-            years: [startYear],
-            startDate: `${startYear}-01-01`,
-            endDate: `${endYear}-12-31`,
-            xStart,
-            xEnd,
-          }
-    );
+    segments.push({
+      kind: "year",
+      year: slot.year,
+      years: [slot.year],
+      startDate: `${slot.year}-01-01`,
+      endDate: `${slot.year}-12-31`,
+      xStart,
+      xEnd,
+    });
     x = xEnd;
 
     const next = list[index + 1];
     if (!next) return;
 
-    const nextStart = next.kind === "stretch" ? next.from : next.year;
-    const bridge = nextStart === endYear + 1;
+    const span = spanByFrom.get(slot.year + 1);
+    const hasSpan = Boolean(span) && Number(span.to) === next.year - 1;
+    const meanPerDay = hasSpan ? Number(span.meanPerDay) || 0 : 0;
+    const bridge = next.year === slot.year + 1;
+    const kind = bridge ? "bridge" : meanPerDay > 0 ? "stretch" : "gap";
+
     segments.push({
-      kind: bridge ? "bridge" : "gap",
+      kind,
       year: null,
-      years: bridge ? [] : rangeYears(endYear + 1, nextStart - 1),
-      startDate: bridge ? `${endYear}-12-31` : `${endYear + 1}-01-01`,
-      endDate: bridge ? `${nextStart}-01-01` : `${nextStart - 1}-12-31`,
+      years: bridge
+        ? []
+        : hasSpan
+          ? span.years.map(Number)
+          : rangeYears(slot.year + 1, next.year - 1),
+      ...(kind === "stretch" ? { meanPerDay } : {}),
+      startDate: bridge ? `${slot.year}-12-31` : `${slot.year + 1}-01-01`,
+      endDate: bridge ? `${next.year}-01-01` : `${next.year - 1}-12-31`,
       xStart: x,
       xEnd: x + GAP_WIDTH,
     });
@@ -180,31 +154,34 @@ export function buildActivitySegments(slots) {
 }
 
 /**
- * 列模型（证据占位）：
- * - 有卡片的年份各占一整列（kind: "cards"）；
- * - 连续"无卡片"的年份按区间处理：区间内任一年贡献大于 0 → 一个整列宽的区间列
- *   （kind: "stretch"，带 total / days / meanPerDay）；区间内全部为 0 → 压缩区间
- *   （gaps，只占最短宽度，不产列）。
+ * 列模型：占位只由**卡片年**决定 —— 区间不再额外占列，卡片间距因此处处一致。
+ * 连续"无卡片"的年份记成区间（gaps），并带上区间统计：
+ * - 区间内有贡献 → meanPerDay > 0，活动场会在那条标准间隙里画水平均值带；
+ * - 区间内全部为 0 → meanPerDay = 0，活动场什么也不画（相当于纯间隔）。
  *
- * 均值 = 区间总贡献 ÷ 区间在数据里覆盖到的天数（含 0 贡献的天），所以尚未到来的
- * 日期不会被算进分母。占位完全由数据推导，不硬编码年份。
+ * 均值 = 区间总贡献 ÷ 区间在数据里覆盖到的天数（含 0 贡献的天），因此尚未到来的
+ * 日期不会被算进分母。占位与统计完全由数据推导，不硬编码年份。
  *
  * @param {number[]} cardYears 有卡片的年份
  * @param {Record<string, number>} dayCounts 每日贡献（ISO 日期 → 次数）
  * @returns {{
- *   slots: Array<{kind: "cards", year: number} | {
- *     kind: "stretch", from: number, to: number, years: number[],
+ *   slots: Array<{ kind: "cards", year: number }>,
+ *   gaps: Array<{
+ *     from: number, to: number, years: number[],
  *     total: number, days: number, meanPerDay: number
- *   }>,
- *   gaps: Array<{ from: number, to: number, years: number[] }>
+ *   }>
  * }}
  */
 export function buildEvidenceSlots(cardYears, dayCounts) {
-  const cards = new Set(
-    (Array.isArray(cardYears) ? cardYears : [])
-      .map(Number)
-      .filter(Number.isInteger)
-  );
+  const cards = [
+    ...new Set(
+      (Array.isArray(cardYears) ? cardYears : [])
+        .map(Number)
+        .filter(Number.isInteger)
+    ),
+  ].sort((left, right) => left - right);
+
+  if (cards.length === 0) return { slots: [], gaps: [] };
 
   const yearly = new Map();
   if (dayCounts && typeof dayCounts === "object" && !Array.isArray(dayCounts)) {
@@ -220,54 +197,32 @@ export function buildEvidenceSlots(cardYears, dayCounts) {
     }
   }
 
-  const evidenceYears = new Set(cards);
-  for (const [year, entry] of yearly) {
-    if (entry.total > 0) evidenceYears.add(year);
-  }
-  if (evidenceYears.size === 0) return { slots: [], gaps: [] };
-
-  const first = Math.min(...evidenceYears);
-  const last = Math.max(...evidenceYears);
-  const slots = [];
+  const slots = cards.map(year => ({ kind: "cards", year }));
   const gaps = [];
 
-  let year = first;
-  while (year <= last) {
-    if (cards.has(year)) {
-      slots.push({ kind: "cards", year });
-      year += 1;
-      continue;
-    }
+  for (let index = 0; index < cards.length - 1; index += 1) {
+    const from = cards[index] + 1;
+    const to = cards[index + 1] - 1;
+    if (from > to) continue;
 
-    const from = year;
-    const years = [];
-    while (year <= last && !cards.has(year)) {
-      years.push(year);
-      year += 1;
-    }
-
+    const years = rangeYears(from, to);
     const total = years.reduce(
-      (sum, item) => sum + (yearly.get(item)?.total ?? 0),
+      (sum, year) => sum + (yearly.get(year)?.total ?? 0),
       0
     );
     const days = years.reduce(
-      (sum, item) => sum + (yearly.get(item)?.days ?? 0),
+      (sum, year) => sum + (yearly.get(year)?.days ?? 0),
       0
     );
 
-    if (total > 0 && days > 0) {
-      slots.push({
-        kind: "stretch",
-        from,
-        to: year - 1,
-        years,
-        total,
-        days,
-        meanPerDay: total / days,
-      });
-    } else {
-      gaps.push({ from, to: year - 1, years });
-    }
+    gaps.push({
+      from,
+      to,
+      years,
+      total,
+      days,
+      meanPerDay: days > 0 ? total / days : 0,
+    });
   }
 
   return { slots, gaps };
