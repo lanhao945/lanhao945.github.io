@@ -95,7 +95,7 @@ const activityField = buildActivityField(
               </li>
             )}
 
-            {/* 纯装饰：沿轴线缓慢流动的光带（横屏生效） */}
+            {/* 纯装饰：沿轴线流动的光带（横屏生效；脚本接管后与自动滚动同速率） */}
             <li class="timeline-flow" aria-hidden="true" />
             {columns.map((column, index) => (
               <li
@@ -413,6 +413,7 @@ const activityField = buildActivityField(
       content: "";
       display: block;
       block-size: 100%;
+      /* 32%：光带宽度；脚本按同一比例把"固定速率"换算成行进距离 */
       inline-size: 32%;
       background: linear-gradient(
         90deg,
@@ -421,7 +422,22 @@ const activityField = buildActivityField(
         transparent
       );
       transform: translateX(-100%);
+      /* 无 JS 时的兜底循环；脚本接管后由 data-flow 关掉、改按固定速率驱动 */
       animation: tl-flow 7s linear infinite;
+    }
+
+    /*
+     * data-flow 出现即代表脚本接管光带：pending / running / stopped 都不再循环，
+     * --tl-flow-x 由脚本按固定速率逐帧推进。
+     */
+    .timeline[data-flow] .timeline-flow::before {
+      animation: none;
+      transform: translateX(var(--tl-flow-x, -100%));
+    }
+
+    /* 巡航结束（滚到最右 / 用户接管）：光带停住并淡出 */
+    .timeline[data-flow="stopped"] .timeline-flow {
+      opacity: 0;
     }
 
     /* 悬停某张卡片时，把该年的节点与年份文字一起点亮
@@ -438,8 +454,8 @@ const activityField = buildActivityField(
       color: var(--color-foreground);
     }
 
-    /* 滚动时"升温"：快速点亮，松手后慢慢冷却 */
-    .timeline[data-heat="true"] .timeline-flow {
+    /* 滚动时"升温"：快速点亮，松手后慢慢冷却（停止后不再复活） */
+    .timeline[data-flow="running"][data-heat="true"] .timeline-flow {
       opacity: var(--tl-flow-hot);
       transition-duration: 0.12s;
     }
@@ -615,6 +631,9 @@ const activityField = buildActivityField(
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
 
+  // 首页自动巡航的停止句柄：同一时间只有一条时间轴在巡航
+  let activeFlowRun: (() => void) | null = null;
+
   const getTimeline = () => {
     const timeline = document.querySelector<HTMLElement>("[data-timeline]");
     const viewport = timeline?.querySelector<HTMLElement>(
@@ -644,6 +663,9 @@ const activityField = buildActivityField(
     const onHome = document.body.classList.contains("home");
     if (!onHome && !event.composedPath().includes(viewport)) return;
 
+    // 用户开始用滚轮接管：立即停掉自动巡航，光带一起停下
+    activeFlowRun?.();
+
     const step =
       event.deltaMode === 1
         ? event.deltaY * 16
@@ -672,7 +694,150 @@ const activityField = buildActivityField(
     const { timeline, viewport } = parts;
     if (timeline.dataset.timelineReady === "true") return;
 
+    // 视图切换后旧时间轴已离场：先收掉它的巡航
+    activeFlowRun?.();
+
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
+    const flow = timeline.querySelector<HTMLElement>(".timeline-flow");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    /*
+     * 首页自动巡航
+     * ---------------------------------------------------------------------
+     * 光带沿轨道以固定速率前进（px/s，而不是固定周期：内容变多只会让行程
+     * 变长，速度不变）。时间轴用同一个速率滚动，但要等光带中心走到视口正
+     * 中才开始；此后两者同速，光带在屏幕上就钉在正中，内容从它下面流过。
+     * 滚到最右后时间轴停下，光带独自走完剩余行程、扫出屏幕，整体结束且不
+     * 再循环。
+     */
+    const FLOW_SPEED = 300; // px/s：光带与自动滚动的固定速率
+    const FLOW_START_DELAY = 400; // ms：等年份/卡片的入场动画先起势
+    const FLOW_WIDTH_RATIO = 0.32; // 与 .timeline-flow::before 的 inline-size 一致
+    const FLOW_FROM = -100; // 与 @keyframes tl-flow 的区间一致（相对光带宽度）
+    const FLOW_TO = 320;
+
+    let flowRaf = 0;
+    let flowTimer = 0;
+    let flowAdvance = 0; // 光带已沿轨道前进的距离（px）
+    let flowLastFrame = 0;
+    let flowStartScroll = 0;
+    let flowEngaged = false; // 光带中心是否已抵达视口正中
+    let flowEngageDistance = 0;
+
+    const maxScrollX = () =>
+      Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+
+    const paintFlow = (progress: number) => {
+      flow?.style.setProperty(
+        "--tl-flow-x",
+        `${FLOW_FROM + (FLOW_TO - FLOW_FROM) * progress}%`
+      );
+    };
+
+    const cancelFlowTicks = () => {
+      if (flowRaf) {
+        cancelAnimationFrame(flowRaf);
+        flowRaf = 0;
+      }
+      if (flowTimer) {
+        window.clearTimeout(flowTimer);
+        flowTimer = 0;
+      }
+    };
+
+    const stopFlowRun = () => {
+      cancelFlowTicks();
+      const state = timeline.dataset.flow;
+      if (state === "running" || state === "pending") {
+        // CSS：光带就地停住并淡出，无限循环不再启用
+        timeline.dataset.flow = "stopped";
+      }
+      if (activeFlowRun === stopFlowRun) activeFlowRun = null;
+    };
+
+    const stepFlow = (now: number) => {
+      flowRaf = 0;
+      if (
+        !flow ||
+        !horizontal.matches ||
+        reduceMotion.matches ||
+        !viewport.isConnected
+      ) {
+        stopFlowRun();
+        return;
+      }
+
+      // 切后台/长卡顿会把帧间隔拉大：按固定速率补帧，但夹住上限避免瞬移
+      if (flowLastFrame) {
+        flowAdvance += (FLOW_SPEED * Math.min(now - flowLastFrame, 250)) / 1000;
+      }
+      flowLastFrame = now;
+
+      const flowBox = flow.getBoundingClientRect();
+      if (flowBox.width <= 0) {
+        stopFlowRun();
+        return;
+      }
+
+      const bandWidth = flowBox.width * FLOW_WIDTH_RATIO;
+      const bandTravel = (bandWidth * (FLOW_TO - FLOW_FROM)) / 100;
+      const progress = Math.min(1, flowAdvance / bandTravel);
+      const bandLeft =
+        flowBox.left +
+        bandWidth * ((FLOW_FROM + (FLOW_TO - FLOW_FROM) * progress) / 100);
+
+      const viewportBox = viewport.getBoundingClientRect();
+      const centerX = viewportBox.left + viewportBox.width / 2;
+
+      // 抵达视口正中之前，时间轴不动；之后按同一速率滚动
+      if (!flowEngaged && bandLeft + bandWidth / 2 >= centerX) {
+        flowEngaged = true;
+        flowEngageDistance = flowAdvance;
+      }
+      if (flowEngaged) {
+        const max = maxScrollX();
+        viewport.scrollLeft = clamp(
+          flowStartScroll + (flowAdvance - flowEngageDistance),
+          flowStartScroll,
+          max
+        );
+      }
+
+      paintFlow(progress);
+
+      if (progress >= 1) {
+        stopFlowRun(); // 光带已扫出右侧：整段巡航结束
+        return;
+      }
+      flowRaf = requestAnimationFrame(stepFlow);
+    };
+
+    const startFlowRun = () => {
+      flowTimer = 0;
+      if (!flow || !horizontal.matches || reduceMotion.matches) return;
+      if (timeline.dataset.flow === "stopped") return; // 用户接管过或已跑完
+
+      flowAdvance = 0;
+      flowLastFrame = 0;
+      flowStartScroll = clamp(viewport.scrollLeft, 0, maxScrollX());
+      flowEngaged = false;
+      flowEngageDistance = 0;
+      timeline.dataset.flow = "running"; // 关掉 CSS 兜底循环，改由脚本驱动
+      paintFlow(0);
+      activeFlowRun = stopFlowRun;
+      flowRaf = requestAnimationFrame(stepFlow);
+    };
+
+    const queueFlowRun = () => {
+      if (!flow || !horizontal.matches || reduceMotion.matches) return;
+      if (timeline.dataset.flow === "stopped") return;
+      if (flowRaf || flowTimer) return;
+      // pending：光带停在起点待命，CSS 的兜底循环不会先转起来
+      timeline.dataset.flow = "pending";
+      paintFlow(0);
+      activeFlowRun = stopFlowRun;
+      flowTimer = window.setTimeout(startFlowRun, FLOW_START_DELAY);
+    };
 
     const update = () => {
       const max = viewport.scrollWidth - viewport.clientWidth;
@@ -745,7 +910,6 @@ const activityField = buildActivityField(
     };
 
     // 滚动时"升温"：滚动中点亮，停手后冷却
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let heatTimer = 0;
 
     viewport.addEventListener(
@@ -764,7 +928,28 @@ const activityField = buildActivityField(
       { passive: true }
     );
     window.addEventListener("resize", scheduleUpdate);
-    horizontal.addEventListener("change", scheduleUpdate);
+
+    // 竖屏看不到时间轴与光带：离开横屏即收掉本轮巡航；回到横屏重新起步
+    horizontal.addEventListener("change", () => {
+      scheduleUpdate();
+      if (!horizontal.matches) {
+        stopFlowRun();
+        return;
+      }
+      queueFlowRun();
+    });
+
+    // 用户接管（滚轮/触摸/拖拽/键盘/焦点进入）后，巡航与光带一起停下
+    const haltFlowOnUserInput = () => activeFlowRun?.();
+    viewport.addEventListener("wheel", haltFlowOnUserInput, { passive: true });
+    viewport.addEventListener("touchstart", haltFlowOnUserInput, {
+      passive: true,
+    });
+    viewport.addEventListener("pointerdown", haltFlowOnUserInput, {
+      passive: true,
+    });
+    viewport.addEventListener("keydown", haltFlowOnUserInput);
+    timeline.addEventListener("focusin", haltFlowOnUserInput);
 
     if (typeof ResizeObserver !== "undefined") {
       const observer = new ResizeObserver(scheduleUpdate);
@@ -787,6 +972,9 @@ const activityField = buildActivityField(
       requestFrame: (callback: FrameRequestCallback) =>
         requestAnimationFrame(callback),
     });
+
+    // 首页打开即巡航：等入场动画起势后，光带从左边出发
+    queueFlowRun();
   }
 
   const initTimeline = () => setupTimeline();
