@@ -101,6 +101,12 @@ const activityField = buildActivityField(
               <li
                 class="timeline-year"
                 id={`year-${column.year}`}
+                data-station="true"
+                data-year={column.year}
+                data-items={column.stacks.reduce(
+                  (count, stack) => count + stack.items.length,
+                  0
+                )}
                 style={`--tl-col: ${index + 1}`}
               >
                 <h2 class="timeline-year-label">
@@ -427,17 +433,23 @@ const activityField = buildActivityField(
     }
 
     /*
-     * data-flow 出现即代表脚本接管光带：pending / running / stopped 都不再循环，
-     * --tl-flow-x 由脚本按固定速率逐帧推进。
+     * data-flow 出现即代表脚本接管光带：pending / running / settled 都不再循环，
+     * --tl-flow-x 由脚本按"逐站巡航"给出（光带中心停在当前站点的节点上）。
      */
     .timeline[data-flow] .timeline-flow::before {
       animation: none;
       transform: translateX(var(--tl-flow-x, -100%));
     }
 
-    /* 巡航结束（滚到最右 / 用户接管）：光带停住并淡出 */
-    .timeline[data-flow="stopped"] .timeline-flow {
-      opacity: 0;
+    /* 走过的年份：轴线点亮成暖色，越靠近当前站越亮；不随时间衰减 */
+    .timeline-year[data-tour="passed"] .timeline-year-dot::after {
+      background: color-mix(
+        in srgb,
+        var(--color-accent) 65%,
+        var(--color-border)
+      );
+      opacity: var(--tl-trail, 1);
+      transition: opacity 0.5s ease-out;
     }
 
     /* 悬停某张卡片时，把该年的节点与年份文字一起点亮
@@ -624,6 +636,7 @@ const activityField = buildActivityField(
     computeAlignedActivityViewBox,
     parseTranslateY,
   } from "@/utils/githubActivity.mjs";
+  import { planTour } from "@/utils/timelineTour.mjs";
 
   const HORIZONTAL_QUERY = "(min-width: 900px) and (orientation: landscape)";
   const horizontal = window.matchMedia(HORIZONTAL_QUERY);
@@ -631,8 +644,8 @@ const activityField = buildActivityField(
   const clamp = (value: number, min: number, max: number) =>
     Math.min(max, Math.max(min, value));
 
-  // 首页自动巡航的停止句柄：同一时间只有一条时间轴在巡航
-  let activeFlowRun: (() => void) | null = null;
+  // 首页巡航的停止句柄（true = 瞬时吸附到最近站，供滚轮接管使用）
+  let activeFlowRun: ((immediate?: boolean) => void) | null = null;
 
   const getTimeline = () => {
     const timeline = document.querySelector<HTMLElement>("[data-timeline]");
@@ -663,8 +676,9 @@ const activityField = buildActivityField(
     const onHome = document.body.classList.contains("home");
     if (!onHome && !event.composedPath().includes(viewport)) return;
 
-    // 用户开始用滚轮接管：立即停掉自动巡航，光带一起停下
-    activeFlowRun?.();
+    // 用户开始用滚轮接管：立即停下巡航并瞬时吸附到最近一站，
+    // 之后本次滚轮步进照常生效（不会与巡航的位移互相覆盖）
+    activeFlowRun?.(true);
 
     const step =
       event.deltaMode === 1
@@ -698,41 +712,89 @@ const activityField = buildActivityField(
     activeFlowRun?.();
 
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
+
+    /*
+     * 首页逐站巡航
+     * ---------------------------------------------------------------
+     * 站点 = 有卡片的年份（[data-station]）。站间按实际几何匀速滑行，速度
+     * 与内容总量无关；到站按 planTour() 的数据预算停留。光带是当前焦点的
+     * "头灯"，随镜头在站点节点之间移动；终章停在最后一站不再扫出，用户一
+     * 接管就吸附到最近站点（滚轮接管走瞬时吸附，避免与滚轮步进互相覆盖）。
+     */
+    const FLOW_START_DELAY = 400; // ms：等年份/卡片的入场动画先起势
+    const FLOW_WIDTH_RATIO = 0.32; // 与 .timeline-flow::before 的 inline-size 一致
+    const SETTLE_MS = 180; // ms：接管后吸附到最近站点（<= 200ms）
+    const BAND_LEAD_EASE = 2; // 光带在滑行中先到一步，再被镜头追上
+
     const flow = timeline.querySelector<HTMLElement>(".timeline-flow");
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-    /*
-     * 首页自动巡航
-     * ---------------------------------------------------------------------
-     * 光带沿轨道以固定速率前进（px/s，而不是固定周期：内容变多只会让行程
-     * 变长，速度不变）。时间轴用同一个速率滚动，但要等光带中心走到视口正
-     * 中才开始；此后两者同速，光带在屏幕上就钉在正中，内容从它下面流过。
-     * 滚到最右后时间轴停下，光带独自走完剩余行程、扫出屏幕，整体结束且不
-     * 再循环。
-     */
-    const FLOW_SPEED = 240; // px/s：光带与自动滚动的固定速率
-    const FLOW_START_DELAY = 400; // ms：等年份/卡片的入场动画先起势
-    const FLOW_WIDTH_RATIO = 0.32; // 与 .timeline-flow::before 的 inline-size 一致
-    const FLOW_FROM = -100; // 与 @keyframes tl-flow 的区间一致（相对光带宽度）
-    const FLOW_TO = 320;
+    const stationElements = () =>
+      Array.from(
+        timeline.querySelectorAll<HTMLElement>(".timeline-year[data-station]")
+      );
 
-    let flowRaf = 0;
-    let flowTimer = 0;
-    let flowAdvance = 0; // 光带已沿轨道前进的距离（px）
-    let flowLastFrame = 0;
-    let flowStartScroll = 0;
-    let flowEngaged = false; // 光带中心是否已抵达视口正中
-    let flowEngageDistance = 0;
+    /** 站点节点（年份圆点）的屏幕坐标盒；隐藏或不可测量时返回 null。 */
+    const stationNodeBox = (element: HTMLElement) => {
+      const dot = element.querySelector<HTMLElement>(".timeline-year-dot");
+      const label = element.querySelector<HTMLElement>(".timeline-year-label");
+      const box =
+        dot?.getBoundingClientRect() ??
+        label?.getBoundingClientRect() ??
+        element.getBoundingClientRect();
+      return box.width > 0 || box.height > 0 ? box : null;
+    };
 
     const maxScrollX = () =>
       Math.max(0, viewport.scrollWidth - viewport.clientWidth);
 
-    const paintFlow = (progress: number) => {
-      flow?.style.setProperty(
+    /** 让该站点落在视口正中所需的 scrollLeft。 */
+    const targetScrollFor = (element: HTMLElement) => {
+      const box = stationNodeBox(element);
+      if (!box) return null;
+      const viewportBox = viewport.getBoundingClientRect();
+      const delta =
+        box.left + box.width / 2 - (viewportBox.left + viewportBox.width / 2);
+      return clamp(viewport.scrollLeft + delta, 0, maxScrollX());
+    };
+
+    /** 站点节点在轨道（光带容器）坐标系里的位置。 */
+    const trackXFor = (element: HTMLElement) => {
+      const box = stationNodeBox(element);
+      const trackBox = flow?.getBoundingClientRect();
+      if (!box || !trackBox || trackBox.width <= 0) return null;
+      return box.left + box.width / 2 - trackBox.left;
+    };
+
+    let bandTrackX = 0; // 光带中心在轨道坐标系里的位置（px）
+
+    /** 让光带中心落在轨道坐标 trackX 上。 */
+    const paintBand = (trackX: number) => {
+      if (!flow) return;
+      const bandWidth = flow.getBoundingClientRect().width * FLOW_WIDTH_RATIO;
+      if (bandWidth <= 0) return;
+      bandTrackX = trackX;
+      flow.style.setProperty(
         "--tl-flow-x",
-        `${FLOW_FROM + (FLOW_TO - FLOW_FROM) * progress}%`
+        `${(trackX / bandWidth) * 100 - 50}%`
       );
     };
+
+    let flowRaf = 0;
+    let flowTimer = 0;
+    let flowLastFrame = 0;
+    let flowPhase: "pending" | "move" | "dwell" | "settled" = "settled";
+    let flowStopping = false; // 接管后的吸附：到位即结束，不恢复巡航
+    let flowSettling = false; // 当前 move 是"吸附"而不是"滑行"
+    let flowStation = 0;
+    let flowElapsed = 0;
+    let flowPlan: ReturnType<typeof planTour> | null = null;
+    let moveFromScroll = 0;
+    let moveToScroll = 0;
+    let moveFromBand = 0;
+    let moveToBand = 0;
+    let moveDuration = 0;
+    let trailHead = -1; // 已点亮的轨迹到第几列
 
     const cancelFlowTicks = () => {
       if (flowRaf) {
@@ -745,14 +807,114 @@ const activityField = buildActivityField(
       }
     };
 
-    const stopFlowRun = () => {
+    /** 收尾：取消帧循环，光带停在原地保持可见，不再位移。 */
+    const endRun = () => {
       cancelFlowTicks();
-      const state = timeline.dataset.flow;
-      if (state === "running" || state === "pending") {
-        // CSS：光带就地停住并淡出，无限循环不再启用
-        timeline.dataset.flow = "stopped";
+      flowPhase = "settled";
+      flowStopping = false;
+      flowSettling = false;
+      timeline.dataset.flow = "settled";
+      if (activeFlowRun === requestStop) activeFlowRun = null;
+    };
+
+    /** 点亮轨迹到指定列为止：越靠近该列越亮，且不回退、不随时间衰减。 */
+    const lightTrailUpTo = (element: HTMLElement | null) => {
+      const years = [
+        ...timeline.querySelectorAll<HTMLElement>(".timeline-year"),
+      ];
+      const head = element ? years.indexOf(element) : -1;
+      if (head === trailHead) return;
+      trailHead = head;
+      years.forEach((year, index) => {
+        if (head < 0 || index > head) return;
+        year.dataset.tour = "passed";
+        year.style.setProperty(
+          "--tl-trail",
+          String(Math.max(0.45, 1 - (head - index) * 0.18))
+        );
+      });
+    };
+
+    const beginDwell = (index: number) => {
+      flowStation = index;
+      flowElapsed = 0;
+      flowPhase = "dwell";
+      lightTrailUpTo(stationElements()[index] ?? null); // 到站即点亮本站
+    };
+
+    const beginMoveTo = (index: number, mode: "glide" | "settle") => {
+      const element = stationElements()[index];
+      const toScroll = element ? targetScrollFor(element) : null;
+      const toBand = element ? trackXFor(element) : null;
+      if (toScroll === null || toBand === null) {
+        endRun(); // 几何不可用：安全终止，手动滚动仍可用
+        return;
       }
-      if (activeFlowRun === stopFlowRun) activeFlowRun = null;
+
+      flowStation = index;
+      flowElapsed = 0;
+      flowPhase = "move";
+      flowSettling = mode === "settle";
+      moveFromScroll = viewport.scrollLeft;
+      moveToScroll = toScroll;
+      moveFromBand = bandTrackX;
+      moveToBand = toBand;
+
+      if (mode === "settle") {
+        moveDuration = SETTLE_MS;
+      } else {
+        // 取相机位移与光带行程的较大者：相机不动（例如前两站都在最左端）
+        // 而光带需要横移时，也让它按同一速度滑过去，而不是瞬移
+        const distance = Math.max(
+          Math.abs(toScroll - moveFromScroll),
+          Math.abs(toBand - moveFromBand)
+        );
+        const speed = Math.max(1, flowPlan?.glideSpeed ?? 1);
+        moveDuration = distance <= 0.5 ? 0 : (distance / speed) * 1000;
+      }
+    };
+
+    /** 用户接管：立即停止巡航，并吸附到最近的一站（immediate = 瞬时）。 */
+    const requestStop = (immediate = false) => {
+      const state = timeline.dataset.flow;
+      if (state !== "pending" && state !== "running") return;
+      cancelFlowTicks();
+
+      const elements = stationElements();
+      if (elements.length === 0) {
+        endRun();
+        return;
+      }
+
+      let nearest = 0;
+      let best = Number.POSITIVE_INFINITY;
+      elements.forEach((element, index) => {
+        const target = targetScrollFor(element);
+        if (target === null) return;
+        const distance = Math.abs(target - viewport.scrollLeft);
+        if (distance < best) {
+          best = distance;
+          nearest = index;
+        }
+      });
+
+      if (immediate) {
+        const target = targetScrollFor(elements[nearest]);
+        const band = trackXFor(elements[nearest]);
+        if (target !== null && band !== null) {
+          viewport.scrollLeft = target;
+          paintBand(band);
+        }
+        endRun();
+        return;
+      }
+
+      timeline.dataset.flow = "running";
+      flowStopping = true;
+      beginMoveTo(nearest, "settle");
+      if (flowPhase !== "move") return;
+      flowLastFrame = 0;
+      flowRaf = requestAnimationFrame(stepFlow);
     };
 
     const stepFlow = (now: number) => {
@@ -763,79 +925,95 @@ const activityField = buildActivityField(
         reduceMotion.matches ||
         !viewport.isConnected
       ) {
-        stopFlowRun();
+        endRun();
         return;
       }
 
-      // 切后台/长卡顿会把帧间隔拉大：按固定速率补帧，但夹住上限避免瞬移
-      if (flowLastFrame) {
-        flowAdvance += (FLOW_SPEED * Math.min(now - flowLastFrame, 250)) / 1000;
-      }
+      // 切后台/长卡顿会把帧间隔拉大：夹住上限避免瞬移
+      const delta = flowLastFrame ? Math.min(now - flowLastFrame, 250) : 0;
       flowLastFrame = now;
 
-      const flowBox = flow.getBoundingClientRect();
-      if (flowBox.width <= 0) {
-        stopFlowRun();
+      if (flowPhase === "move") {
+        flowElapsed += delta;
+        const progress =
+          moveDuration > 0 ? Math.min(1, flowElapsed / moveDuration) : 1;
+        viewport.scrollLeft =
+          moveFromScroll + (moveToScroll - moveFromScroll) * progress;
+        const bandProgress = flowSettling
+          ? progress
+          : 1 - (1 - progress) ** BAND_LEAD_EASE;
+        paintBand(moveFromBand + (moveToBand - moveFromBand) * bandProgress);
+
+        if (progress >= 1) {
+          if (flowStopping) {
+            endRun();
+            return;
+          }
+          beginDwell(flowStation);
+        }
+      } else if (flowPhase === "dwell") {
+        flowElapsed += delta;
+        const node = stationElements()[flowStation];
+        const nodeTrackX = node ? trackXFor(node) : null;
+        if (nodeTrackX !== null) paintBand(nodeTrackX); // 站点高亮后节点会微移，跟随它
+        const station = flowPlan?.stations[flowStation];
+        const hold = (station?.dwellMs ?? 0) + (station?.finaleHoldMs ?? 0);
+
+        if (flowElapsed >= hold) {
+          if (flowStation + 1 < (flowPlan?.stations.length ?? 0)) {
+            beginMoveTo(flowStation + 1, "glide");
+          } else {
+            endRun(); // 终章：光带停在最后一站，不再位移
+            return;
+          }
+        }
+      } else {
+        endRun();
         return;
       }
 
-      const bandWidth = flowBox.width * FLOW_WIDTH_RATIO;
-      const bandTravel = (bandWidth * (FLOW_TO - FLOW_FROM)) / 100;
-      const progress = Math.min(1, flowAdvance / bandTravel);
-      const bandLeft =
-        flowBox.left +
-        bandWidth * ((FLOW_FROM + (FLOW_TO - FLOW_FROM) * progress) / 100);
-
-      const viewportBox = viewport.getBoundingClientRect();
-      const centerX = viewportBox.left + viewportBox.width / 2;
-
-      // 抵达视口正中之前，时间轴不动；之后按同一速率滚动
-      if (!flowEngaged && bandLeft + bandWidth / 2 >= centerX) {
-        flowEngaged = true;
-        flowEngageDistance = flowAdvance;
-      }
-      if (flowEngaged) {
-        const max = maxScrollX();
-        viewport.scrollLeft = clamp(
-          flowStartScroll + (flowAdvance - flowEngageDistance),
-          flowStartScroll,
-          max
-        );
-      }
-
-      paintFlow(progress);
-
-      if (progress >= 1) {
-        stopFlowRun(); // 光带已扫出右侧：整段巡航结束
-        return;
-      }
       flowRaf = requestAnimationFrame(stepFlow);
     };
 
     const startFlowRun = () => {
       flowTimer = 0;
       if (!flow || !horizontal.matches || reduceMotion.matches) return;
-      if (timeline.dataset.flow === "stopped") return; // 用户接管过或已跑完
+      if (timeline.dataset.flow === "settled") return; // 用户接管过或已跑完
 
-      flowAdvance = 0;
+      const elements = stationElements();
+      if (elements.length === 0) {
+        endRun();
+        return;
+      }
+
+      flowPlan = planTour(
+        elements.map(element => ({
+          year: Number(element.dataset.year),
+          items: Number(element.dataset.items ?? 0),
+        }))
+      );
       flowLastFrame = 0;
-      flowStartScroll = clamp(viewport.scrollLeft, 0, maxScrollX());
-      flowEngaged = false;
-      flowEngageDistance = 0;
-      timeline.dataset.flow = "running"; // 关掉 CSS 兜底循环，改由脚本驱动
-      paintFlow(0);
-      activeFlowRun = stopFlowRun;
+      flowStopping = false;
+      timeline.dataset.flow = "running";
+      activeFlowRun = requestStop;
+      beginMoveTo(0, "settle"); // 起手：先把镜头与光带对到第一站
+      if (flowPhase !== "move") return;
       flowRaf = requestAnimationFrame(stepFlow);
     };
 
     const queueFlowRun = () => {
       if (!flow || !horizontal.matches || reduceMotion.matches) return;
-      if (timeline.dataset.flow === "stopped") return;
+      if (timeline.dataset.flow === "settled") return;
       if (flowRaf || flowTimer) return;
-      // pending：光带停在起点待命，CSS 的兜底循环不会先转起来
+
+      const first = stationElements()[0];
+      const firstBand = first ? trackXFor(first) : null;
+      if (firstBand !== null) paintBand(firstBand);
+
+      // pending：光带先停在第一站待命，CSS 的兜底循环不会先转起来
+      flowPhase = "pending";
       timeline.dataset.flow = "pending";
-      paintFlow(0);
-      activeFlowRun = stopFlowRun;
+      activeFlowRun = requestStop;
       flowTimer = window.setTimeout(startFlowRun, FLOW_START_DELAY);
     };
 
@@ -864,13 +1042,22 @@ const activityField = buildActivityField(
         }
       }
 
+      // 巡航期间"当前站"由巡航决定（含起手停靠）；手动浏览时才看离视口中心最近
+      const tourElement =
+        flowPhase === "settled"
+          ? null
+          : (stationElements()[flowStation] ?? null);
+      const highlighted = tourElement ?? current;
+
       for (const year of timeline.querySelectorAll(".timeline-year")) {
-        if (year === current) {
+        if (year === highlighted) {
           year.setAttribute("data-current", "true");
         } else {
           year.removeAttribute("data-current");
         }
       }
+
+      lightTrailUpTo(highlighted as HTMLElement | null);
 
       // 活动场的 SVG 基线跟随真实轴线，而不是假设轨道永远上下等高。
       const activitySvg = timeline.querySelector<SVGSVGElement>(
@@ -933,7 +1120,7 @@ const activityField = buildActivityField(
     horizontal.addEventListener("change", () => {
       scheduleUpdate();
       if (!horizontal.matches) {
-        stopFlowRun();
+        endRun();
         return;
       }
       queueFlowRun();

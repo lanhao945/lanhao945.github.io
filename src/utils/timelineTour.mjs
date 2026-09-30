@@ -43,11 +43,21 @@ function normalizeStations(stations) {
 }
 
 /**
+ * @typedef {object} TourStation
+ * @property {number} year 站点年份
+ * @property {number} items 该年的卡片条目数
+ * @property {number} gapYears 与上一站的真实年份间隔（首站为 0）
+ * @property {boolean} finale 是否最后一站
+ * @property {number} dwellMs 由数据推导的停留时长（不含终章定格）
+ * @property {number} finaleHoldMs 终章在最后一站额外定格（非最后一站为 0）
+ */
+
+/**
  * 生成巡航计划。
  *
  * @param {{ year: number, items: number }[]} stations 有卡片的年份（按时间顺序）
  * @param {Partial<typeof TOUR_DEFAULTS>} [options] 覆盖默认常量（便于实测调参）
- * @returns {{ glideSpeed: number, stations: object[], totalDwellMs: number }}
+ * @returns {{ glideSpeed: number, stations: TourStation[], totalDwellMs: number }}
  */
 export function planTour(stations, options = {}) {
   const config = { ...TOUR_DEFAULTS, ...options };
