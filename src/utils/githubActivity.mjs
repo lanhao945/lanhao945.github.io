@@ -75,53 +75,157 @@ function movingAverage(values, windowSize = 7) {
   });
 }
 
-export function buildActivitySegments(anchorYears) {
-  const years = [
-    ...new Set(
-      (Array.isArray(anchorYears) ? anchorYears : [])
-        .map(Number)
-        .filter(Number.isInteger)
-    ),
-  ].sort((a, b) => a - b);
+/** 生成 [from, to] 的年份数组（to < from 时为空）。 */
+function rangeYears(from, to) {
+  const years = [];
+  for (let year = from; year <= to; year += 1) years.push(year);
+  return years;
+}
+
+/**
+ * 把列模型铺成活动场段落（内部 x 单位）：
+ * - 卡片年 = 一年一段，占 COLUMN_WIDTH；
+ * - 相邻卡片年之间 = 一个最短宽度（GAP_WIDTH）的段落：
+ *   相邻年 → bridge；跨年区间有贡献 → stretch（带 meanPerDay，画水平带）；否则 gap。
+ *
+ * 区间**不占列**：均值带就画在这条标准间隙里，因此卡片间距处处一致。
+ *
+ * @param {{ slots: Array<{year: number}>, gaps: Array<{
+ *   from: number, to: number, years: number[], meanPerDay: number
+ * }> }} model
+ */
+export function buildActivitySegments(model) {
+  const slots = Array.isArray(model?.slots) ? model.slots : [];
+  const spans = Array.isArray(model?.gaps) ? model.gaps : [];
+  const spanByFrom = new Map(spans.map(span => [Number(span.from), span]));
+
+  const list = slots
+    .map(slot => {
+      const year = Number(slot && slot.year);
+      return Number.isInteger(year) ? { year } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.year - right.year);
 
   const segments = [];
-  for (let index = 0; index < years.length; index += 1) {
-    const year = years[index];
-    const xStart = index * (COLUMN_WIDTH + GAP_WIDTH);
-    const xEnd = xStart + COLUMN_WIDTH;
+  let x = 0;
+
+  list.forEach((slot, index) => {
+    const xStart = x;
+    const xEnd = x + COLUMN_WIDTH;
     segments.push({
       kind: "year",
-      year,
-      years: [year],
-      startDate: `${year}-01-01`,
-      endDate: `${year}-12-31`,
+      year: slot.year,
+      years: [slot.year],
+      startDate: `${slot.year}-01-01`,
+      endDate: `${slot.year}-12-31`,
       xStart,
       xEnd,
     });
+    x = xEnd;
 
-    const nextYear = years[index + 1];
-    if (nextYear) {
-      segments.push({
-        kind: nextYear === year + 1 ? "bridge" : "gap",
-        year: null,
-        years:
-          nextYear === year + 1
-            ? []
-            : Array.from(
-                { length: nextYear - year - 1 },
-                (_value, offset) => year + offset + 1
-              ),
-        startDate:
-          nextYear === year + 1 ? `${year}-12-31` : `${year + 1}-01-01`,
-        endDate:
-          nextYear === year + 1 ? `${nextYear}-01-01` : `${nextYear - 1}-12-31`,
-        xStart: xEnd,
-        xEnd: xEnd + GAP_WIDTH,
-      });
+    const next = list[index + 1];
+    if (!next) return;
+
+    const span = spanByFrom.get(slot.year + 1);
+    const hasSpan = Boolean(span) && Number(span.to) === next.year - 1;
+    const meanPerDay = hasSpan ? Number(span.meanPerDay) || 0 : 0;
+    const bridge = next.year === slot.year + 1;
+    const kind = bridge ? "bridge" : meanPerDay > 0 ? "stretch" : "gap";
+
+    segments.push({
+      kind,
+      year: null,
+      years: bridge
+        ? []
+        : hasSpan
+          ? span.years.map(Number)
+          : rangeYears(slot.year + 1, next.year - 1),
+      ...(kind === "stretch" ? { meanPerDay } : {}),
+      startDate: bridge ? `${slot.year}-12-31` : `${slot.year + 1}-01-01`,
+      endDate: bridge ? `${next.year}-01-01` : `${next.year - 1}-12-31`,
+      xStart: x,
+      xEnd: x + GAP_WIDTH,
+    });
+    x += GAP_WIDTH;
+  });
+
+  return segments;
+}
+
+/**
+ * 列模型：占位只由**卡片年**决定 —— 区间不再额外占列，卡片间距因此处处一致。
+ * 连续"无卡片"的年份记成区间（gaps），并带上区间统计：
+ * - 区间内有贡献 → meanPerDay > 0，活动场会在那条标准间隙里画水平均值带；
+ * - 区间内全部为 0 → meanPerDay = 0，活动场什么也不画（相当于纯间隔）。
+ *
+ * 均值 = 区间总贡献 ÷ 区间在数据里覆盖到的天数（含 0 贡献的天），因此尚未到来的
+ * 日期不会被算进分母。占位与统计完全由数据推导，不硬编码年份。
+ *
+ * @param {number[]} cardYears 有卡片的年份
+ * @param {Record<string, number>} dayCounts 每日贡献（ISO 日期 → 次数）
+ * @returns {{
+ *   slots: Array<{ kind: "cards", year: number }>,
+ *   gaps: Array<{
+ *     from: number, to: number, years: number[],
+ *     total: number, days: number, meanPerDay: number
+ *   }>
+ * }}
+ */
+export function buildEvidenceSlots(cardYears, dayCounts) {
+  const cards = [
+    ...new Set(
+      (Array.isArray(cardYears) ? cardYears : [])
+        .map(Number)
+        .filter(Number.isInteger)
+    ),
+  ].sort((left, right) => left - right);
+
+  if (cards.length === 0) return { slots: [], gaps: [] };
+
+  const yearly = new Map();
+  if (dayCounts && typeof dayCounts === "object" && !Array.isArray(dayCounts)) {
+    for (const [day, rawValue] of Object.entries(dayCounts)) {
+      if (!isValidIsoDate(day)) continue;
+      const value = Number(rawValue);
+      if (!Number.isFinite(value) || value < 0) continue;
+      const year = Number(day.slice(0, 4));
+      const entry = yearly.get(year) ?? { total: 0, days: 0 };
+      entry.days += 1;
+      entry.total += value;
+      yearly.set(year, entry);
     }
   }
 
-  return segments;
+  const slots = cards.map(year => ({ kind: "cards", year }));
+  const gaps = [];
+
+  for (let index = 0; index < cards.length - 1; index += 1) {
+    const from = cards[index] + 1;
+    const to = cards[index + 1] - 1;
+    if (from > to) continue;
+
+    const years = rangeYears(from, to);
+    const total = years.reduce(
+      (sum, year) => sum + (yearly.get(year)?.total ?? 0),
+      0
+    );
+    const days = years.reduce(
+      (sum, year) => sum + (yearly.get(year)?.days ?? 0),
+      0
+    );
+
+    gaps.push({
+      from,
+      to,
+      years,
+      total,
+      days,
+      meanPerDay: days > 0 ? total / days : 0,
+    });
+  }
+
+  return { slots, gaps };
 }
 
 function normalizeDays(dayCounts) {
@@ -137,6 +241,23 @@ function normalizeDays(dayCounts) {
 
 function sampleSegment(segment, dayCounts) {
   if (segment.kind === "bridge") return [];
+
+  // 区间列：水平均值带（常量 level），不逐年细分
+  if (segment.kind === "stretch") {
+    const binCount = 8;
+    const points = [];
+    for (let index = 0; index < binCount; index += 1) {
+      points.push({
+        x:
+          segment.xStart +
+          ((index + 0.5) * (segment.xEnd - segment.xStart)) / binCount,
+        level: segment.meanPerDay,
+        dateStart: segment.startDate,
+        dateEnd: segment.endDate,
+      });
+    }
+    return points;
+  }
 
   const dates = eachDay(segment.startDate, segment.endDate);
   const rawValues = dates.map(day => dayCounts.get(day) ?? 0);
@@ -221,9 +342,9 @@ export function mergeActivitySources(sources) {
   );
 }
 
-export function buildActivityField(dayCounts, anchorYears) {
+export function buildActivityField(dayCounts, slots) {
   const dayMap = normalizeDays(dayCounts);
-  const rawSegments = buildActivitySegments(anchorYears);
+  const rawSegments = buildActivitySegments(slots);
   const width =
     rawSegments.length > 0 ? rawSegments[rawSegments.length - 1].xEnd : 0;
   const sampledSegments = rawSegments.map(segment => ({
