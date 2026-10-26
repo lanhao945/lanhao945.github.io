@@ -37,6 +37,10 @@ export default {
   timeline: {
     title: "时间轴",
     empty: "暂无记录",
+    itemsCount: "{{count}} 项",
+    viewAll: "全部 {{count}} 项",
+    openYearDetail: "打开 {{year}} 年全部 {{count}} 项记录",
+    closeYearDetail: "关闭年度记录",
   },
   footer: {
     copyright: "版权所有",

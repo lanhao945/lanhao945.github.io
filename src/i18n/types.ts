@@ -35,6 +35,10 @@ export interface UIStrings {
   timeline: {
     title: string;
     empty: string;
+    itemsCount: string;
+    viewAll: string;
+    openYearDetail: string;
+    closeYearDetail: string;
   };
   footer: {
     copyright: string;

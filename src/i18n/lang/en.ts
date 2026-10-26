@@ -37,6 +37,10 @@ export default {
   timeline: {
     title: "Timeline",
     empty: "No entries yet",
+    itemsCount: "{{count}} items",
+    viewAll: "All {{count}} items",
+    openYearDetail: "Open all {{count}} entries for {{year}}",
+    closeYearDetail: "Close year details",
   },
   footer: {
     copyright: "Copyright",

@@ -4,16 +4,21 @@ import { render } from "astro:content";
 
 type Props = {
   entry: CollectionEntry<"timeline">;
+  presentation?: "timeline" | "detail";
 };
 
-const { entry } = Astro.props;
+const { entry, presentation = "timeline" } = Astro.props;
 const { title, type, meta, summary, tags, links } = entry.data;
 
 // 正文可选：写在前言下面的 Markdown 会作为补充说明渲染出来
 const { Content } = await render(entry);
 ---
 
-<li class="timeline-event" id={`entry-${entry.id}`}>
+<li
+  class="timeline-event"
+  id={presentation === "timeline" ? `entry-${entry.id}` : undefined}
+  data-presentation={presentation}
+>
   <span class="timeline-event-rail" aria-hidden="true"></span>
   <div class="timeline-event-body">
     <p class="timeline-event-meta">
@@ -55,6 +60,30 @@ const { Content } = await render(entry);
     display: grid;
     grid-template-columns: 1.25rem 1fr;
     column-gap: 0.75rem;
+  }
+
+  /* 年度详情中的卡片不再绘制时间轴竖线，改为独立信息卡。 */
+  .timeline-event[data-presentation="detail"] {
+    display: block;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--color-muted) 55%, transparent);
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .timeline-event[data-presentation="detail"]:hover {
+    border-color: color-mix(
+      in srgb,
+      var(--color-accent) 45%,
+      var(--color-border)
+    );
+  }
+
+  .timeline-event[data-presentation="detail"] .timeline-event-rail {
+    display: none;
   }
 
   .timeline-event-rail {

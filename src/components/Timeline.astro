@@ -6,7 +6,8 @@ import {
   buildEvidenceSlots,
   mergeActivitySources,
 } from "@/utils/githubActivity.mjs";
-import { useTranslations } from "@/i18n";
+import { buildTimelinePreview } from "@/utils/timelinePresentation.mjs";
+import { tplStr, useTranslations } from "@/i18n";
 
 type Props = {
   columns: TimelineColumn[];
@@ -38,11 +39,15 @@ const { slots, gaps } = buildEvidenceSlots(
   mergedActivityDays
 );
 const columnByYear = new Map(columns.map(column => [column.year, column]));
-const slotColumns = slots.map((slot, index) => ({
-  slot,
-  index,
-  column: columnByYear.get(slot.year) ?? null,
-}));
+const slotColumns = slots.map((slot, index) => {
+  const column = columnByYear.get(slot.year) ?? null;
+  return {
+    slot,
+    index,
+    column,
+    presentation: column ? buildTimelinePreview(column) : null,
+  };
+});
 const stretchNotes = gaps
   .filter(gap => gap.meanPerDay > 0)
   .map(gap => ({
@@ -117,24 +122,46 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
 
             {/* 纯装饰：沿轴线流动的光带（横屏生效；脚本接管后与自动滚动同速率） */}
             <li class="timeline-flow" aria-hidden="true" />
-            {slotColumns.map(({ slot, index, column }) =>
-              column ? (
+            {slotColumns.map(({ slot, index, column, presentation }) =>
+              column && presentation ? (
                 <li
                   class="timeline-year"
                   id={`year-${slot.year}`}
                   data-station="true"
                   data-year={slot.year}
-                  data-items={column.stacks.reduce(
-                    (count, stack) => count + stack.items.length,
-                    0
-                  )}
+                  data-items={presentation.itemCount}
                   style={`--tl-col: ${index + 1}`}
                 >
-                  <h2 class="timeline-year-label">
-                    <span class="timeline-year-dot" aria-hidden="true" />
-                    <time datetime={String(slot.year)}>{slot.year}</time>
-                  </h2>
-                  {column.stacks.map(stack =>
+                  <div class="timeline-year-axis">
+                    <h2 class="timeline-year-label">
+                      <span class="timeline-year-dot" aria-hidden="true" />
+                      <time datetime={String(slot.year)}>{slot.year}</time>
+                    </h2>
+                    {presentation.hasOverflow ? (
+                      <button
+                        type="button"
+                        class="timeline-year-more"
+                        data-timeline-year-trigger
+                        aria-haspopup="dialog"
+                        aria-controls={`year-detail-${slot.year}`}
+                        aria-label={tplStr(t.timeline.openYearDetail, {
+                          year: slot.year,
+                          count: presentation.itemCount,
+                        })}
+                      >
+                        {tplStr(t.timeline.viewAll, {
+                          count: presentation.itemCount,
+                        })}
+                      </button>
+                    ) : (
+                      <span class="timeline-year-count">
+                        {tplStr(t.timeline.itemsCount, {
+                          count: presentation.itemCount,
+                        })}
+                      </span>
+                    )}
+                  </div>
+                  {presentation.previewStacks.map(stack =>
                     stack.items.length > 0 ? (
                       <ol class="timeline-events" data-side={stack.side}>
                         {stack.items.map(entry => (
@@ -142,6 +169,53 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
                         ))}
                       </ol>
                     ) : null
+                  )}
+                  {presentation.hasOverflow && (
+                    <dialog
+                      class="timeline-year-dialog"
+                      id={`year-detail-${slot.year}`}
+                      data-timeline-year-dialog
+                      aria-labelledby={`year-detail-title-${slot.year}`}
+                    >
+                      <div class="timeline-year-dialog-panel">
+                        <header class="timeline-year-dialog-header">
+                          <div>
+                            <p class="timeline-year-dialog-kicker">
+                              {t.timeline.title}
+                            </p>
+                            <h2
+                              id={`year-detail-title-${slot.year}`}
+                              class="timeline-year-dialog-title"
+                            >
+                              {slot.year}
+                            </h2>
+                            <p class="timeline-year-dialog-count">
+                              {tplStr(t.timeline.itemsCount, {
+                                count: presentation.itemCount,
+                              })}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            class="timeline-year-dialog-close"
+                            data-timeline-dialog-close
+                            aria-label={t.timeline.closeYearDetail}
+                          >
+                            ×
+                          </button>
+                        </header>
+                        <div class="timeline-year-dialog-scroll">
+                          <ol class="timeline-year-dialog-list">
+                            {presentation.allItems.map(entry => (
+                              <TimelineItem
+                                entry={entry}
+                                presentation="detail"
+                              />
+                            ))}
+                          </ol>
+                        </div>
+                      </div>
+                    </dialog>
                   )}
                 </li>
               ) : null
@@ -228,15 +302,65 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
     list-style: none;
   }
 
+  .timeline-year-axis {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 1rem;
+  }
+
   .timeline-year-label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin: 0 0 1rem;
+    margin: 0;
     font-size: 0.9375rem;
     font-weight: 600;
     letter-spacing: 0.16em;
     color: var(--color-muted-foreground);
+  }
+
+  .timeline-year-count,
+  .timeline-year-more {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: 1.5rem;
+    border-radius: 9999px;
+    padding: 0.1rem 0.55rem;
+    font-family:
+      "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+      system-ui, sans-serif;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-year-count {
+    border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .timeline-year-more {
+    appearance: none;
+    border: 1px solid var(--color-border);
+    background: color-mix(in srgb, var(--color-background) 82%, transparent);
+    cursor: pointer;
+    transition:
+      color 0.2s ease,
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .timeline-year-more:hover,
+  .timeline-year-more:focus-visible {
+    border-color: var(--color-accent);
+    color: var(--color-foreground);
+  }
+
+  .timeline-year-more:focus-visible {
+    outline: 2px dashed var(--color-accent);
+    outline-offset: 2px;
   }
 
   .timeline-year-dot {
@@ -255,6 +379,127 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
   /* 竖屏：同一年分成两段渲染，接缝处保持与段内一致的间距 */
   .timeline-events + .timeline-events {
     margin-top: 1.75rem;
+  }
+
+  .timeline-year-dialog {
+    inline-size: min(64rem, calc(100vw - 3rem));
+    max-block-size: min(82dvh, 50rem);
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    color: var(--color-foreground);
+    background: var(--color-background);
+    box-shadow:
+      0 1.5rem 4rem rgb(0 0 0 / 18%),
+      0 0 0 1px color-mix(in srgb, var(--color-border) 60%, transparent);
+  }
+
+  .timeline-year-dialog::backdrop {
+    background: color-mix(in srgb, var(--color-background) 34%, transparent);
+    backdrop-filter: blur(5px);
+  }
+
+  .timeline-year-dialog-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    max-block-size: inherit;
+  }
+
+  .timeline-year-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem 1rem;
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .timeline-year-dialog-kicker {
+    margin: 0;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    letter-spacing: 0.16em;
+    color: var(--color-muted-foreground);
+    text-transform: uppercase;
+  }
+
+  .timeline-year-dialog-title {
+    margin: 0.2rem 0 0;
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: 0.06em;
+  }
+
+  .timeline-year-dialog-count {
+    margin: 0.35rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-muted-foreground);
+  }
+
+  .timeline-year-dialog-close {
+    display: grid;
+    flex: none;
+    place-items: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    appearance: none;
+    border: 1px solid var(--color-border);
+    border-radius: 9999px;
+    color: var(--color-muted-foreground);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .timeline-year-dialog-close:hover,
+  .timeline-year-dialog-close:focus-visible {
+    border-color: var(--color-accent);
+    color: var(--color-foreground);
+  }
+
+  .timeline-year-dialog-close:focus-visible {
+    outline: 2px dashed var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .timeline-year-dialog-scroll {
+    min-block-size: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1rem 1.5rem 1.5rem;
+    scrollbar-gutter: stable;
+  }
+
+  .timeline-year-dialog-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (max-width: 720px) {
+    .timeline-year-dialog {
+      inline-size: 100vw;
+      max-inline-size: none;
+      max-block-size: 88dvh;
+      margin: auto 0 0;
+      border-radius: 1rem 1rem 0 0;
+    }
+
+    .timeline-year-dialog-header {
+      padding: 1rem;
+    }
+
+    .timeline-year-dialog-scroll {
+      padding: 0.875rem 1rem 1.25rem;
+    }
+
+    .timeline-year-dialog-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   /* ---------- 横屏：从左往右，卡片上下交错 ---------- */
@@ -297,8 +542,8 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
       align-items: flex-start;
       justify-content: flex-start;
       overflow-x: auto;
-      /* 窗口特别矮时（内容高于可视区）仍能看到整列内容，滚轮会先纵向走完再横向移动 */
-      overflow-y: auto;
+      /* 主时间轴只保留一个导航轴；年度超量内容进入详情面板。 */
+      overflow-y: hidden;
       overscroll-behavior: contain;
       scroll-padding-inline: var(--tl-inset);
       /* 隐藏原生滚动条：滚动反馈交给底部那条自绘进度线 */
@@ -587,7 +832,7 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
 
     /* 内容层始终在活动场之上。 */
     .timeline-events,
-    .timeline-year-label {
+    .timeline-year-axis {
       position: relative;
       z-index: 1;
     }
@@ -610,7 +855,15 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
       margin-top: 0;
     }
 
-    /* 年份标签固定在轴线那一行，文字仍按奇偶在轴线上/下交错 */
+    /* 年份轴标签固定在轴线那一行，超量入口与年份同列。 */
+    .timeline-year-axis {
+      grid-column: var(--tl-col);
+      grid-row: 2;
+      align-self: center;
+      margin: 0;
+      scroll-snap-align: start;
+    }
+
     .timeline-year-label {
       display: grid;
       grid-template-columns: auto 1fr;
@@ -618,10 +871,13 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
       align-items: center;
       column-gap: 0.5rem;
       margin: 0;
-      grid-column: var(--tl-col);
-      grid-row: 2;
-      align-self: center;
-      scroll-snap-align: start;
+    }
+
+    .timeline-year-axis > .timeline-year-count,
+    .timeline-year-axis > .timeline-year-more {
+      position: absolute;
+      inset-inline-end: 0;
+      inset-block-start: 0.125rem;
     }
 
     /* 年份文字统一在轴线上方：卡片分居两侧时，标签位置固定才好对照 */
@@ -713,6 +969,14 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
     // Ctrl+滚轮（缩放）、竖屏/窄屏、触控板横向滑动：都交回浏览器
     if (event.ctrlKey || !horizontal.matches) return;
     if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+    // 年度详情拥有自己的纵向滚动，打开后不再由时间轴接管滚轮。
+    if (
+      document.querySelector<HTMLDialogElement>(
+        "[data-timeline-year-dialog][open]"
+      )
+    ) {
+      return;
+    }
 
     const parts = getTimeline();
     if (!parts) return;
@@ -736,17 +1000,6 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
           ? event.deltaY * viewport.clientHeight
           : event.deltaY;
 
-    // 窗口特别矮、一列装不下时：先把这一列纵向看完，再继续往右
-    const maxY = viewport.scrollHeight - viewport.clientHeight;
-    if (maxY > 8 && !event.shiftKey) {
-      const nextY = clamp(viewport.scrollTop + step, 0, maxY);
-      if (nextY !== viewport.scrollTop) {
-        viewport.scrollTop = nextY;
-        event.preventDefault();
-        return;
-      }
-    }
-
     event.preventDefault();
     viewport.scrollLeft = clamp(viewport.scrollLeft + step, 0, maxX);
   }
@@ -761,6 +1014,81 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
     activeFlowRun?.();
 
     const track = timeline.querySelector<HTMLElement>(".timeline-track");
+    const yearDialogs = Array.from(
+      timeline.querySelectorAll<HTMLDialogElement>(
+        "[data-timeline-year-dialog]"
+      )
+    );
+    const dialogTriggers = new WeakMap<HTMLDialogElement, HTMLButtonElement>();
+    let bodyOverflowBeforeDialog = "";
+
+    const closeYearDialog = (dialog: HTMLDialogElement) => {
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    };
+
+    const openYearDialog = (
+      trigger: HTMLButtonElement,
+      dialog: HTMLDialogElement
+    ) => {
+      activeFlowRun?.(true);
+      bodyOverflowBeforeDialog = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      dialogTriggers.set(dialog, trigger);
+
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+
+      dialog
+        .querySelector<HTMLButtonElement>("[data-timeline-dialog-close]")
+        ?.focus();
+    };
+
+    for (const dialog of yearDialogs) {
+      dialog.addEventListener("click", event => {
+        if (event.target === dialog) closeYearDialog(dialog);
+      });
+      dialog.addEventListener("cancel", event => {
+        event.preventDefault();
+        closeYearDialog(dialog);
+      });
+      dialog.addEventListener("close", () => {
+        const trigger = dialogTriggers.get(dialog);
+        dialogTriggers.delete(dialog);
+        document.body.style.overflow = bodyOverflowBeforeDialog;
+        trigger?.focus();
+      });
+    }
+
+    timeline.addEventListener("click", event => {
+      if (!(event.target instanceof Element)) return;
+
+      const trigger = event.target.closest<HTMLButtonElement>(
+        "[data-timeline-year-trigger]"
+      );
+      if (trigger) {
+        const dialogId = trigger.getAttribute("aria-controls");
+        const dialog = dialogId ? document.getElementById(dialogId) : null;
+        if (dialog instanceof HTMLDialogElement) {
+          openYearDialog(trigger, dialog);
+        }
+        return;
+      }
+
+      const closeButton = event.target.closest<HTMLButtonElement>(
+        "[data-timeline-dialog-close]"
+      );
+      const dialog = closeButton?.closest<HTMLDialogElement>(
+        "[data-timeline-year-dialog]"
+      );
+      if (dialog) closeYearDialog(dialog);
+    });
 
     /*
      * 首页开场预告
@@ -1065,10 +1393,8 @@ const activityField = buildActivityField(mergedActivityDays, { slots, gaps });
 
     const update = () => {
       const max = viewport.scrollWidth - viewport.clientWidth;
-      const maxY = viewport.scrollHeight - viewport.clientHeight;
       timeline.dataset.axis = horizontal.matches ? "x" : "y";
       timeline.dataset.overflowX = max > 1 ? "true" : "false";
-      timeline.dataset.overflowY = maxY > 1 ? "true" : "false";
       timeline.dataset.atStart = viewport.scrollLeft <= 4 ? "true" : "false";
       timeline.dataset.atEnd =
         max <= 1 || viewport.scrollLeft >= max - 4 ? "true" : "false";
