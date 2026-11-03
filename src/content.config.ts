@@ -36,7 +36,7 @@ const posts = defineCollection({
  */
 const timeline = defineCollection({
   loader: glob({
-    pattern: "**/[^_]*.{md,mdx}",
+    pattern: "**/[^._]*.{md,mdx}",
     base: "./src/content/timeline",
   }),
   schema: z.object({
