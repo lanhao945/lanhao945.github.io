@@ -61,12 +61,7 @@ test("priority 相同时按 month、title 稳定排序", () => {
     makeTimelineEntry({ id: "no-month", priority: 1, title: "Z" }),
   ]);
 
-  assert.deepEqual(entryIds(sorted), [
-    "no-month",
-    "jul-z",
-    "sep-a",
-    "sep-b",
-  ]);
+  assert.deepEqual(entryIds(sorted), ["no-month", "jul-z", "sep-a", "sep-b"]);
 });
 
 test("全部省略 priority 时保持原有 month、title 顺序", () => {
@@ -77,12 +72,7 @@ test("全部省略 priority 时保持原有 month、title 顺序", () => {
     makeTimelineEntry({ id: "no-month", title: "Z" }),
   ]);
 
-  assert.deepEqual(entryIds(sorted), [
-    "no-month",
-    "jul-z",
-    "sep-a",
-    "sep-b",
-  ]);
+  assert.deepEqual(entryIds(sorted), ["no-month", "jul-z", "sep-a", "sep-b"]);
 });
 
 test("排序不修改输入数组", () => {
