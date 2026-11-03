@@ -1,4 +1,5 @@
 import type { CollectionEntry } from "astro:content";
+import { sortTimelineEntries } from "./timelinePresentation.mjs";
 
 export type TimelineEntry = CollectionEntry<"timeline">;
 
@@ -8,19 +9,12 @@ export type TimelineGroup = {
 };
 
 /**
- * 时间轴排序：从早到晚（横屏时左 = 过去，竖屏时上 = 过去）。
- * 同一年内先按 month，再按标题，保证顺序稳定。
+ * 时间轴排序：年份从早到晚（横屏时左 = 过去，竖屏时上 = 过去）。
+ * 同一年内先按 priority（数字越小越优先），未填写 priority 的排最后；
+ * 再按 month、标题排序，保证顺序稳定。
  */
 export function getSortedTimeline(entries: TimelineEntry[]): TimelineEntry[] {
-  return [...entries].sort((a, b) => {
-    if (a.data.year !== b.data.year) return a.data.year - b.data.year;
-
-    const monthA = a.data.month ?? 0;
-    const monthB = b.data.month ?? 0;
-    if (monthA !== monthB) return monthA - monthB;
-
-    return a.data.title.localeCompare(b.data.title, "zh-CN");
-  });
+  return sortTimelineEntries(entries);
 }
 
 /** 按年份分组，保留排序结果。 */
