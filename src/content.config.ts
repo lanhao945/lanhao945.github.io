@@ -42,6 +42,8 @@ const timeline = defineCollection({
   schema: z.object({
     year: z.number().int().min(1900).max(2199),
     month: z.number().int().min(1).max(12).optional(),
+    /** 首页同年排序权重：正整数，越小越靠前；不填则排最后。 */
+    priority: z.number().int().positive().optional(),
     title: z.string(),
     type: z.enum(["教育", "证书", "资格", "论文", "专利", "项目", "工作", "记录"]),
     /** 附加说明，例如专利号、会议名、时间段 */
